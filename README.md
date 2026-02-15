@@ -64,34 +64,9 @@ This setup's primary value is a **structured development pipeline** — from fea
 
 ### The Pipeline
 
-```mermaid
-flowchart TD
-    A["/create-plan"] --> B["/review-plan"]
-    B --> C{Plan review<br/>passes?}
-    C -- Yes --> D["/audit-plan"]
-    C -- No --> FIX1["Fix plan issues"] --> B
-    D --> E{Audit<br/>passes?}
-    E -- Yes --> F["/implement"]
-    E -- "Major issues" --> FIX2["Restructure plan"] --> B
-
-    F --> G["Next pending phase"]
-    G --> H{Phase review<br/>passes?}
-    H -- No --> FIX3["Fix phase"] --> H
-    H -- Yes --> I
-
-    subgraph build ["Builder (ephemeral, per phase)"]
-        I["Find reference + domain skill"] --> J["TDD first, then implement"]
-        J --> K["/code-review + auto-fix"]
-    end
-
-    K --> N["Validator checks"]
-    N --> O{Result}
-    O -- PASS --> P["Phase done"]
-    O -- FAIL --> Q["Fresh builder + fix instructions"] --> I
-    P --> R{More<br/>phases?}
-    R -- Yes --> G
-    R -- No --> S(["All done"])
-```
+<picture>
+  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with its builder-validator loop" src="docs/pipeline.svg" width="950">
+</picture>
 
 ### Atomic Phases
 
