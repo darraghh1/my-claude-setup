@@ -1,0 +1,30 @@
+# API keys & secrets
+.mcp.json
+.env
+.env.local
+.env.*.local
+
+# Claude Code ephemeral data (sessions, logs — per-user, not shareable)
+.claude/data/
+
+# Claude Code user-specific memory (private per-developer)
+.claude/memory/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

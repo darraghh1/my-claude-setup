@@ -1,0 +1,46 @@
+[
+  {
+    "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|--recursive\\s+--force|--force\\s+--recursive|-r\\s+.*-f|-f\\s+.*-r)",
+    "safe_patterns": [
+      "\\.next",
+      "node_modules",
+      "\\.turbo",
+      "\\.cache",
+      "__pycache__",
+      "dist/",
+      "build/",
+      "trees/",
+      "coverage/",
+      "\\.vitest",
+      "tmp/",
+      "temp/",
+      "logs/"
+    ],
+    "action": "ask",
+    "reason": "rm -rf on an unrecognized path can permanently destroy source code, configuration, or user data that cannot be recovered. Use a more targeted approach or verify the path is safe."
+  },
+  {
+    "pattern": "git\\s+push\\s+.*--force(?!-with-lease)",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Force push overwrites remote history — other developers' commits and in-progress work could be permanently lost. Use --force-with-lease instead, which refuses to push if someone else has pushed since your last fetch."
+  },
+  {
+    "pattern": "drop\\s+table",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "DROP TABLE permanently destroys the table and all its data with no recovery path. If this is intentional (e.g., in a migration), confirm the table name and that data has been backed up or migrated."
+  },
+  {
+    "pattern": "drop\\s+database",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "DROP DATABASE destroys the entire database including all tables, data, functions, and policies. This is never the right approach — use supabase:web:reset for a controlled database rebuild instead."
+  },
+  {
+    "pattern": "truncate\\s+",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "TRUNCATE removes all rows from the table instantly with no transaction log for recovery. Unlike DELETE, it cannot be rolled back in most contexts. Confirm this is intentional and that the data is expendable."
+  }
+]
