@@ -10,10 +10,11 @@
 # Claude Code user-specific memory (private per-developer)
 .claude/memory/
 
-# Python bytecode
+# Python bytecode & type checking cache
 __pycache__/
 *.pyc
 *.pyo
+.mypy_cache/
 
 # Node
 node_modules/

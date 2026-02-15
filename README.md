@@ -9,6 +9,12 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 ## Table of Contents
 
 - [What This Provides](#what-this-provides)
+- [Development Workflow](#development-workflow)
+  - [The Pipeline](#the-pipeline)
+  - [Atomic Phases](#atomic-phases)
+  - [Team Orchestration](#team-orchestration)
+  - [Quality Gates](#quality-gates)
+  - [Ad-Hoc Development](#ad-hoc-development)
 - [Quick Start](#quick-start)
 - [Prerequisites](#prerequisites)
 - [Directory Structure](#directory-structure)
@@ -45,10 +51,120 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 15 slash commands | Guided workflows for planning, building, reviewing, and using MCP tools |
+| **Skills** | 16 slash commands | Guided workflows for planning, building, reviewing, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
 | **MCP Servers** | 4 integrations | Browser automation, documentation lookup, web search, structured reasoning |
 | **Rules** | 13 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
+
+---
+
+## Development Workflow
+
+This setup's primary value is a **structured development pipeline** — from feature idea to shipped code, with quality gates at every stage. Every guardrail exists because skipping it caused hours of rework in real usage.
+
+### The Pipeline
+
+```mermaid
+flowchart TD
+    A["/create-plan"] --> B["/review-plan"]
+    B --> C{Plan review<br/>passes?}
+    C -- Yes --> D["/audit-plan"]
+    C -- No --> FIX1["Fix plan issues"] --> B
+    D --> E{Audit<br/>passes?}
+    E -- Yes --> F["/implement"]
+    E -- "Major issues" --> FIX2["Restructure plan"] --> B
+
+    F --> G["Next pending phase"]
+    G --> H{Phase review<br/>passes?}
+    H -- No --> FIX3["Fix phase"] --> H
+    H -- Yes --> I
+
+    subgraph build ["Builder (ephemeral, per phase)"]
+        I["Find reference + domain skill"] --> J["TDD first, then implement"]
+        J --> K["/code-review + auto-fix"]
+    end
+
+    K --> N["Validator checks"]
+    N --> O{Result}
+    O -- PASS --> P["Phase done"]
+    O -- FAIL --> Q["Fresh builder + fix instructions"] --> I
+    P --> R{More<br/>phases?}
+    R -- Yes --> G
+    R -- No --> S(["All done"])
+```
+
+### Atomic Phases
+
+Traditional development plans have 3-5 large phases. This doesn't work with AI-assisted development because each phase must fit within a single context window (~200K tokens). Large phases cause Claude to lose earlier context mid-implementation, producing incomplete or inconsistent code.
+
+**The rule: 30 small phases > 5 large phases.**
+
+| Wrong | Right |
+|-------|-------|
+| "Phase 01: Database + API + UI" | Split into 3 separate phases |
+| "Phase 02: Full Feature Implementation" | Break into atomic steps |
+| "Phase 03: Testing and Polish" | TDD is Step 0 in *every* phase |
+
+Each phase file includes a `skill:` field in its frontmatter that tells the builder which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The builder reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
+
+### Team Orchestration
+
+The `/implement` skill acts as a **thin dispatcher** that coordinates a team of specialized agents:
+
+| Role | Lifetime | Responsibility |
+|------|----------|---------------|
+| **Orchestrator** | Entire plan | Finds phases, runs gate checks, spawns/shuts down teammates, routes PASS/FAIL verdicts |
+| **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs `/code-review` |
+| **Validator** | Entire plan (persistent) | Independent verification after each phase — checks files exist, patterns match codebase, tests pass, typecheck clean |
+
+**Why builders are ephemeral:** Each phase gets a fresh builder with a clean 200K context window. After completion, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3), ensures the `builder-workflow` skill instructions are never compacted away, and means each builder reads fresh references for its specific phase type.
+
+**Why the validator is persistent:** Cross-phase context helps it catch consistency issues — if phase 3's types don't match phase 2's interfaces, a persistent validator notices.
+
+For independent phases (no dependencies between them), multiple builders can be spawned in parallel — each with its own clean context.
+
+### Quality Gates
+
+Quality is enforced at four layers during each phase, in order:
+
+| Layer | When | What Runs | Catches |
+|-------|------|-----------|---------|
+| **PostToolUse hook** | Every Write/Edit on TS files | `typescript_validator.py` | `any` types, missing `'use server'` directives, `console.log` in production code |
+| **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` | Test failures, type errors |
+| **`/code-review`** | After verification passes | 451-line checklist, codebase-grounded, auto-fix | Pattern deviations, security issues, missing auth checks |
+| **Validator teammate** | After builder reports done | Independent file/pattern/test verification | Anything the builder's self-review missed |
+
+Both `/review-plan` (planning phase) and `/code-review` (implementation phase) are **codebase-grounded** — they read actual files from your project before flagging issues, so findings are specific to your codebase rather than generic advice.
+
+Implementation is blocked if:
+- Plan review verdict is "No"
+- Flow audit says "Major Restructuring Needed"
+- Phase contains placeholder content (`[To be detailed]`, `TBD`)
+- Phase review has unresolved Critical/High issues
+- Validator returns FAIL 3+ times on the same phase (escalates to user)
+
+### Ad-Hoc Development
+
+Not everything needs a plan. For smaller tasks — bug fixes, single-feature additions, quick refactors — use **`/dev`** instead:
+
+```
+/dev add a loading spinner to the projects list
+```
+
+`/dev` follows the same principles (find a reference first, invoke the right domain skill, TDD, verify) but skips the planning overhead. It auto-routes to the appropriate domain skill based on what you're building:
+
+| Work Type | Skill Invoked |
+|-----------|--------------|
+| Database changes | `/postgres-expert` |
+| Server actions | `/server-action-builder` |
+| Service layer | `/service-builder` |
+| React forms | `/react-form-builder` |
+| Components/pages | `/vercel-react-best-practices` |
+| E2E tests | `/playwright-e2e` |
+
+If a `/dev` task turns out to be too large (10+ files, multiple domains), it recommends switching to `/create-plan` instead.
+
+> For a deep dive into how each skill works internally, see [docs/workflow.md](docs/workflow.md).
 
 ---
 
@@ -153,7 +269,7 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 16 skill directories (each with SKILL.md)
+├── skills/                         # 18 skill directories (each with SKILL.md)
 │   ├── audit-plan/
 │   ├── code-review/
 │   ├── context7-mcp/
@@ -288,6 +404,7 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 
 | Skill | Slash Command | Purpose |
 |-------|--------------|---------|
+| **dev** | `/dev` | General-purpose ad-hoc development — routes to domain skills, enforces task tracking, and follows a build-test-verify loop |
 | **server-action-builder** | `/server-action-builder` | Generates Server Actions with Zod validation, auth checks, and service integration |
 | **service-builder** | `/service-builder` | Generates services following the private class + factory function pattern |
 | **react-form-builder** | `/react-form-builder` | Generates client forms with `react-hook-form`, Zod schemas, and component library integration |
@@ -463,7 +580,7 @@ npx playwright install chromium
 The `statusline-command.py` script renders a rich status bar at the bottom of Claude Code showing real-time session info:
 
 ```text
-Opus | ██████░░░░ 58% | 5h: 23% (3h12m) | 7d: 8% (5d2h) | Tasks: 2/5 | Agents: 1 team + 2 bg | development
+Opus | ██████░░░░ 58% | 5h: 23% (3h12m) | 7d: 8% (5d2h) | Tasks: 2/5 | Agents: 1 team + 2 bg | notes P3 | development
 ```
 
 **Segments displayed:**
@@ -476,7 +593,10 @@ Opus | ██████░░░░ 58% | 5h: 23% (3h12m) | 7d: 8% (5d2h) | Ta
 | 7d Usage | Anthropic OAuth API | `7d: 8% (5d2h)` — resets every 7 days |
 | Tasks | Open/completed task counts | `Tasks: 2/5` (hidden when no tasks) |
 | Agents | Active teammates + background tasks | `Agents: 1 team + 2 bg` (hidden when none) |
+| Plan | Per-plan sidecar files from `/implement` | `notes P3` or `notes P3 | billing P1` (hidden when no plan active) |
 | Git Branch | `git branch --show-current` | `development` |
+
+The **Plan** segment uses per-plan sidecar files in `~/.cache/claude-statusline/plans/` — each `/implement` session writes its own file keyed by plan name (e.g., `notes.json`, `billing.json`). This means multiple agents working on different plans each get their own sidecar with no overwrites. The statusline scans all sidecar files and displays every active plan. Stale sidecars from crashed sessions auto-expire after 2 hours.
 
 Colors change from green to yellow to red as usage increases (50% / 80% thresholds).
 

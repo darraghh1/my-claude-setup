@@ -62,15 +62,28 @@ Proceeding with implementation when the plan review verdict is "No" means buildi
 Read the Phase Table in plan.md. Find the first phase with status "Pending".
 
 If all phases are done:
-1. Remove `~/.cache/claude-statusline/active-plan.json` if it exists
+1. Remove the plan's sidecar: `rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json`
 2. Report completion to the user
 3. Skip to Step 9 (cleanup)
 
 **Update the statusline sidecar:**
 
+After finding the next pending phase, write a per-plan sidecar file so the statusline displays current progress. Each plan gets its own file — multiple agents on different plans won't overwrite each other:
+
 ```bash
-mkdir -p ~/.cache/claude-statusline && echo '{"plan":"PLAN_NAME","phase":PHASE_NUM,"updated":'$(date +%s)'}' > ~/.cache/claude-statusline/active-plan.json
+mkdir -p ~/.cache/claude-statusline/plans && echo '{"plan":"PLAN_NAME","phase":PHASE_NUM,"updated":'$(date +%s)'}' > ~/.cache/claude-statusline/plans/PLAN_NAME.json
 ```
+
+Where:
+- `PLAN_NAME` = the plan folder name (from `$ARGUMENTS`, e.g., `notes` from `plans/notes`)
+- `PHASE_NUM` = the current phase number (from the phase's frontmatter `number` field or phase filename)
+
+Example: If implementing phase 3 of the "notes" plan, run:
+```bash
+mkdir -p ~/.cache/claude-statusline/plans && echo '{"plan":"notes","phase":3,"updated":'$(date +%s)'}' > ~/.cache/claude-statusline/plans/notes.json
+```
+
+This makes the statusline display: `notes - Phase 3`
 
 ## Step 4: Gate Check the Phase
 
@@ -240,10 +253,10 @@ SendMessage({ type: "shutdown_request", recipient: "validator" })
 
 2. **Delete team:** `TeamDelete()`
 
-3. **Remove statusline sidecar:**
+3. **Remove this plan's statusline sidecar:**
 
 ```bash
-rm -f ~/.cache/claude-statusline/active-plan.json
+rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json
 ```
 
 **Error breakout conditions** — STOP and shut down if:

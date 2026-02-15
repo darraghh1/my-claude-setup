@@ -6,7 +6,7 @@
 
 """
 Claude Code Status Line
-Displays: Model | Context ProgressBar % | 5h Usage % | 7d Usage % | Tasks | Agents | Plan | Git Branch
+Displays: Model | Context ProgressBar % | 5h Usage % | 7d Usage % | Tasks | Agents | Plan(s) | Git Branch
 
 Uses the OAuth usage endpoint (same as claude-dashboard) to get real
 subscription plan utilization — not API token counting.
@@ -14,6 +14,7 @@ subscription plan utilization — not API token counting.
 Task/Agent info shows:
 - Tasks: Open/completed task counts
 - Sub-agents: Active sub-agent count (Team members + Background tasks)
+- Plans: Active implementation plans from per-plan sidecar files (multi-agent safe)
 """
 
 import json
@@ -40,7 +41,7 @@ CACHE_DIR = Path.home() / ".cache" / "claude-statusline"
 CACHE_FILE = CACHE_DIR / "usage-cache.json"
 CACHE_TTL_SECONDS = 60
 API_TIMEOUT_SECONDS = 5
-PLAN_CACHE_FILE = CACHE_DIR / "active-plan.json"
+PLAN_CACHE_DIR = CACHE_DIR / "plans"  # one file per plan for multi-agent isolation
 PLAN_STALE_SECONDS = 7200  # 2h — ignore sidecar from crashed sessions
 
 # ── Progress bar chars ────────────────────────────────────────────────────────
@@ -292,20 +293,40 @@ def get_agent_info(stdin_data: dict) -> str | None:
 
 
 def get_plan_info() -> str | None:
-    """Get active plan/phase from sidecar file written by /implement."""
+    """Get active plan/phase from per-plan sidecar files written by /implement.
+
+    Each /implement session writes its own file to plans/{plan-name}.json,
+    so multiple agents on different plans don't overwrite each other.
+    """
     try:
-        if not PLAN_CACHE_FILE.exists():
+        if not PLAN_CACHE_DIR.exists():
             return None
-        data = json.loads(PLAN_CACHE_FILE.read_text())
-        age = time.time() - data.get("updated", 0)
-        if age > PLAN_STALE_SECONDS:
+
+        now = time.time()
+        active_plans: list[tuple[float, str]] = []  # (updated, label)
+
+        for sidecar in PLAN_CACHE_DIR.glob("*.json"):
+            try:
+                data = json.loads(sidecar.read_text())
+                age = now - data.get("updated", 0)
+                if age > PLAN_STALE_SECONDS:
+                    continue
+                plan = data.get("plan", "")
+                phase = data.get("phase")
+                if not plan:
+                    continue
+                label = f"{plan} P{phase}" if phase else plan
+                active_plans.append((data.get("updated", 0), label))
+            except Exception:
+                continue
+
+        if not active_plans:
             return None
-        plan = data.get("plan", "")
-        phase = data.get("phase")
-        if not plan:
-            return None
-        label = f"{plan} - Phase {phase}" if phase else plan
-        return colorize(label, PASTEL_LAVENDER)
+
+        # Sort by most recently updated, show all active plans
+        active_plans.sort(key=lambda x: x[0], reverse=True)
+        labels = [label for _, label in active_plans]
+        return colorize(" | ".join(labels), PASTEL_LAVENDER)
     except Exception:
         return None
 
