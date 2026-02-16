@@ -7,6 +7,9 @@
 # Claude Code ephemeral data (sessions, logs — per-user, not shareable)
 .claude/data/
 
+# Playwright MCP local state
+.playwright-mcp/
+
 # Claude Code user-specific memory (private per-developer)
 .claude/memory/
 

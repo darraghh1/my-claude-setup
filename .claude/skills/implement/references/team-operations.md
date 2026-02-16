@@ -15,33 +15,31 @@ Each builder follows this flow:
 3. **Read phase** — extract requirements, steps, acceptance criteria
 4. **Pre-flight test check** — verify previous phases haven't left broken tests
 5. **Find reference + invoke domain skill** — ground truth for patterns
-6. **Create internal task list** — survive context compacts within the phase
-7. **Implement with TDD** — Step 0 first, then remaining steps sequentially
+6. **Create internal task list** — `TaskCreate` for each step, prefixed with `[Step]`. Required for context compact recovery
+7. **Implement with TDD** — Step 0 first, then remaining steps sequentially. Mark each `[Step]` task `in_progress`/`completed`
 8. **Final verification** — `pnpm test` + `pnpm run typecheck`
-9. **Run `/code-review`** — fix Critical/High/Medium issues
-10. **Report completion** to orchestrator via SendMessage
-11. **Shut down** when orchestrator sends shutdown_request
+9. **Report completion** to orchestrator via SendMessage (do NOT run `/code-review` — the validator handles that independently)
+10. **Shut down** when orchestrator sends shutdown_request
 
 **Builders do NOT receive step-level tasks from the orchestrator.** The builder handles the entire phase end-to-end using its preloaded `builder-workflow` skill. The orchestrator's only job is to spawn the builder with the right phase file.
 
 ## Validator Teammate Lifecycle
 
-**The validator is persistent across phases.** Unlike builders (which are ephemeral per-phase), a single validator is spawned once and reused for all phase validations.
+**Validators are ephemeral, like builders.** Each phase gets a fresh validator spawned on-demand when its builder reports completion. This eliminates the single-validator bottleneck — when 3 builders complete in parallel, 3 validators review concurrently. Each validator is named to match its builder (`validator-1` for `builder-1`, etc.).
 
 The validator follows this flow:
 
-1. **Spawned once** by the orchestrator during the first phase
-2. **Receives validation assignment** from orchestrator after a builder reports completion
-3. **Verify work:**
-   a. Files listed in the phase's Implementation Steps were created/modified
-   b. Code matches codebase patterns (find a reference file, compare)
-   c. Code quality: no console.log, no `any` types, server files have `import 'server-only'`
-   d. Run typecheck: `pnpm run typecheck`
-   e. Run full test suite: `pnpm test` — report FAIL if any test fails
+1. **Spawned on-demand** by the orchestrator in Step 7 when a builder reports completion
+2. **Run comprehensive code review:**
+   - Invoke `/code-review [phase-file-path]` — this forks a sub-agent that does reference-grounded analysis, severity-rated findings, and auto-fixes Critical/High/Medium issues
+   - The code review writes a review artifact to `{plan-folder}/reviews/code/phase-{NN}.md`
+3. **Run verification (only if auto-fixes were applied):**
+   - If code review auto-fixed any files → run `pnpm run typecheck` + `pnpm test` to confirm fixes are clean
+   - If code review found zero issues → **skip verification** (builder already passed tests + typecheck, no files changed)
 4. **Report verdict** via SendMessage to orchestrator:
-   - **PASS:** Brief summary of what was verified
+   - **PASS:** Code review passed, no unfixed issues, verification passed or skipped
    - **FAIL:** Specific issues with file:line references, pattern violated, exact fix needed
-5. **Go idle** — wait for next validation assignment (next phase)
+5. **Shut down** — orchestrator sends shutdown_request after processing the verdict
 
 ## Orchestrator Responsibilities
 
@@ -50,11 +48,12 @@ The orchestrator is a **thin dispatcher**. It does NOT read references, extract 
 | Orchestrator Does | Orchestrator Does NOT |
 |-------------------|----------------------|
 | Read plan.md and find pending phases | Read reference files or extract patterns |
-| Gate-check phases (skeleton check, review check) | Implement any code |
-| Spawn/shutdown builders per phase | Assign step-level tasks to builders |
-| Send validation assignments to validator | Validate code directly |
-| Route PASS/FAIL verdicts | Run `/code-review` (builders do this) |
-| Update phase status in plan.md | Invoke domain skills (builders do this) |
+| Create/update tasks for phase tracking | Implement any code |
+| Gate-check phases (skeleton check, review check) | Assign step-level tasks to builders |
+| Spawn/shutdown builders per phase | Run `/code-review` directly |
+| Spawn validators per phase for independent review | Validate code directly |
+| Route PASS/FAIL verdicts | Invoke domain skills (builders do this) |
+| Update phase status in plan.md + task list | |
 
 ## Patterns That Prevent User-Reported Failures
 
@@ -67,10 +66,12 @@ The user experienced each of these failures. Understanding the harm helps you av
 | Reusing builders across phases | Context contamination; builder-workflow instructions get compacted |
 | Skipping the phase review gate | Phase has wrong patterns, builder implements wrong code |
 | Skipping validator after builder | Pattern violations ship undetected |
+| Reusing a single validator across parallel builders | Validation serializes — last phase waits 15-20 min for its review |
 | Builder skipping reference file read | Builder guesses at patterns, code doesn't match codebase |
 | Builder skipping TDD (Step 0) | Untested code, bugs discovered later |
-| Builder self-reviewing instead of `/code-review` | Blind spots missed |
+| Builder running `/code-review` on its own code | Self-review blind spots — the author cannot objectively review their own work |
 | Forgetting to update phase status | Plan becomes stale, next session confused about progress |
+| Skipping TaskCreate for phase tracking | Orchestrator loses progress after context compact; no user-visible spinners |
 | More than 2-3 builders at once | Context pressure on orchestrator from concurrent messages |
 | Ignoring test failures from previous phases | Broken tests pile up, eventually blocking the entire plan |
 | Skipping TeamDelete after completion | Stale team directories clutter filesystem |
@@ -83,15 +84,18 @@ The user experienced each of these failures. Understanding the harm helps you av
 
 If context was compacted mid-implementation:
 
-1. **Read plan.md** — find the Phase Table, identify the first "Pending" phase
-2. **Check if a team exists:** read `~/.claude/teams/{plan-name}-impl/config.json`
+1. **Run `TaskList`** — find your tasks and their status
+2. **Find the `in_progress` task** — that's the phase you were working on
+3. **Run `TaskGet {id}`** on that task to read full details
+4. **Read plan.md** — get the Phase Table for broader context
+5. **Check if a team exists:** read `~/.claude/teams/{plan-name}-impl/config.json`
    - If team exists, teammates are still active — send messages to coordinate
-   - If no team, re-create it and re-spawn the validator
-3. **Check builder status** — if a builder is active for the current phase, wait for its completion message
-4. **If no builder is active** — spawn a fresh builder for the current pending phase
-5. **Continue the dispatch loop** from that phase
+   - If no team, re-create it (Step 5) — validators are spawned on-demand in Step 7
+6. **Check builder status** — if a builder is active for the current phase, wait for its completion message
+7. **If no builder is active** — spawn a fresh builder for the current pending phase
+8. **Continue the dispatch loop** from that phase
 
-The plan.md Phase Table is the orchestrator's source of truth for progress.
+The task list is the orchestrator's primary source of truth for progress. Plan.md's Phase Table is secondary context.
 
 ### For Builders
 
@@ -151,6 +155,9 @@ The Write tool **silently fails** if you haven't Read the file first. This has c
 
 Quality checks execute in this order during a phase:
 
-1. **PostToolUse hook** (`typescript_validator.py`) — catches issues at write time (fastest feedback, runs on builder)
-2. **Builder's `/code-review`** — comprehensive review after all steps complete (runs within builder context)
-3. **Validator teammate** — independent verification after builder reports done (catches pattern deviations the builder missed)
+1. **PostToolUse hook** (`typescript_validator.py`) — catches issues at write time (fastest feedback, runs on both builder and validator)
+2. **Builder self-verification** — `pnpm test` + `pnpm run typecheck` after all steps complete (builder confirms its own work compiles and tests pass)
+3. **Validator's `/code-review`** — comprehensive, reference-grounded review with auto-fix (independent agent, fresh perspective, catches blind spots)
+4. **Validator verification** (conditional) — `pnpm run typecheck` + `pnpm test` only if code review auto-fixed files (skipped when no changes — builder's verification still holds)
+
+The key principle: **the builder never reviews its own code**. Layers 1-2 are self-verification (does it compile? do tests pass?). Layers 3-4 are independent review (does it follow patterns? is it correct?).

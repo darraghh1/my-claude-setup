@@ -93,6 +93,7 @@ Task 4: Create Phase 01 - [Title]
 Task 5: Create Phase 02 - [Title]
 [...continue for all phases...]
 Task N: Review complete plan (delegate to review sub-agents)
+Task N+1: Flow audit (3+ phases only — /audit-plan)
 ```
 
 ## Step 5: Create plan.md (Without Phase Details)
@@ -282,9 +283,23 @@ Spawn **one agent per file** for thorough reviews. See [Delegation Guide](refere
 - Anti-patterns to avoid when delegating
 - Batching examples for plans of different sizes
 
-## Step 10: Report Summary
+## Step 10: Flow Audit (3+ Phases)
 
-After reviews complete, provide the user with:
+For plans with 3 or more phases, run a flow audit to catch structural issues that per-phase reviews cannot see — circular dependencies, missing dependency declarations, wrong phase ordering, and stale artifacts.
+
+**Skip this step** for 1-2 phase plans (too small for flow issues).
+
+```
+/audit-plan plans/{YYMMDD}-{feature-name}
+```
+
+This invokes `/audit-plan` which writes a report to `{plan-folder}/reviews/planning/flow-audit.md`. The `/implement` orchestrator gate-checks this report before starting implementation — if the overall assessment is "Major Restructuring Needed", implementation blocks.
+
+**If the audit finds Critical/High issues:** Fix them in the phase files before reporting the plan as ready. Re-run `/audit-plan` after fixes to confirm the issues are resolved.
+
+## Step 11: Report Summary
+
+After reviews and audit complete, provide the user with:
 
 1. **Folder location:** `plans/{YYMMDD}-{feature-name}/`
 2. **Files created:**
@@ -294,6 +309,7 @@ After reviews complete, provide the user with:
 3. **Review status:**
    - Plan.md: template score (X/11)
    - Each phase: template score (X/12) + codebase score (N issues by severity)
+   - Flow audit (3+ phases): overall assessment + Critical/High issue count
 4. **Overall verdict:** Ready/Not Ready for implementation
 5. **Critical issues** (if any) that need addressing before implementation
 

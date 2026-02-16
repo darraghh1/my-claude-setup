@@ -20,10 +20,10 @@ This skill is a **thin dispatcher**. It does NOT read references, extract patter
 | Role | Responsibility |
 |------|---------------|
 | **Orchestrator (you)** | Find phases, gate checks, spawn/shutdown teammates, route PASS/FAIL |
-| **Builder** | Full phase implementation: read phase, find references, invoke skills, code, test, review |
-| **Validator** | Verify completed work: files exist, patterns match, tests pass, typecheck passes |
+| **Builder** | Phase implementation: read phase, find references, invoke skills, code, test, typecheck. Does NOT review its own code. |
+| **Validator** | Independent review: runs `/code-review` (reference-grounded, with auto-fix), then typecheck + tests. Reports PASS/FAIL. |
 
-**Builders are ephemeral.** Each phase gets a fresh builder with a clean 200K context. After a phase completes, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases and ensures the `builder-workflow` skill instructions are never compacted away.
+**Builders and validators are ephemeral.** Each phase gets a fresh builder with a clean 200K context. When a builder completes, a fresh validator is spawned for that phase's review. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases, ensures skill instructions are never compacted away, and eliminates the single-validator bottleneck when multiple builders run in parallel.
 
 ---
 
@@ -45,9 +45,9 @@ Proceeding with implementation when the plan review verdict is "No" means buildi
 
 **2. Skip for small plans:** If 1-2 phases, skip to Step 3.
 
-**3. Check if audit exists:** Look for `$ARGUMENTS/reviews/planning/flow-audit.md`.
+**3. Check if audit exists:** Look for `$ARGUMENTS/reviews/planning/flow-audit.md`. This should already exist from `/create-plan` (Step 10).
 
-**4. Run if missing:** For 3+ phases with no audit: `/audit-plan $ARGUMENTS`
+**4. If missing:** STOP and tell the user to run `/audit-plan $ARGUMENTS` first. The orchestrator should not run the audit itself — it consumes too much context for a thin dispatcher.
 
 **5. Gate logic:**
 
@@ -57,18 +57,57 @@ Proceeding with implementation when the plan review verdict is "No" means buildi
 | **"Significant Issues"** | **SOFT BLOCK:** WARN user. Ask whether to proceed or fix. |
 | **"Minor Issues"** or **"Coherent"** | **PROCEED.** |
 
-## Step 3: Find Next Pending Phase
+## Step 3: Find Unblocked Phases
 
-Read the Phase Table in plan.md. Find the first phase with status "Pending".
+**3a: Check for existing tasks (compact recovery):**
+
+Run `TaskList` first. If tasks already exist from a previous session or before a context compact:
+1. Read existing tasks with `TaskGet` for each task ID
+2. If any task is `in_progress` — that's where you were interrupted. Resume from that phase's current state (check if a builder/validator is active)
+3. Do NOT recreate the task list — resume with existing tasks
+
+**3b: Read the Phase Table:**
+
+Read the Phase Table in plan.md. Collect all phases with status "Pending".
 
 If all phases are done:
 1. Remove the plan's sidecar: `rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json`
 2. Report completion to the user
 3. Skip to Step 9 (cleanup)
 
+**3c: Create orchestrator tasks (first run only):**
+
+If no tasks exist yet, create one task per pending phase:
+
+```
+TaskCreate({
+  subject: "Phase {NN} — {phase title}",
+  description: "Gate check → build → validate → mark done\nPhase: $ARGUMENTS/phase-{NN}-{slug}.md",
+  activeForm: "Implementing Phase {NN}"
+})
+```
+
+Then set up dependencies with `TaskUpdate` using `addBlockedBy` to mirror each phase's `dependencies` frontmatter. For example, if Phase 03 depends on Phase 01:
+
+```
+TaskUpdate({ taskId: "3", addBlockedBy: ["1"] })
+```
+
+Tasks survive context compacts and give the user progress visibility. Without them, the orchestrator loses track of which phases are in flight after a compact.
+
+**3d: Determine which pending phases are unblocked:**
+
+For each pending phase, read its frontmatter `dependencies` field:
+- `dependencies: []` (empty) → **unblocked** — no prerequisites
+- `dependencies: [Phase 01, Phase 03]` → check the Phase Table for each listed dependency
+  - All dependencies have status "Done" → **unblocked**
+  - Any dependency is not "Done" → **blocked** — skip for now
+
+Collect all unblocked phases. These are the candidates for gate-checking (Step 4) and builder spawning (Step 6).
+
 **Update the statusline sidecar:**
 
-After finding the next pending phase, write a per-plan sidecar file so the statusline displays current progress. Each plan gets its own file — multiple agents on different plans won't overwrite each other:
+After identifying unblocked phases, write a per-plan sidecar file using the lowest-numbered unblocked phase so the statusline displays current progress. Each plan gets its own file — multiple agents on different plans won't overwrite each other:
 
 ```bash
 mkdir -p ~/.cache/claude-statusline/plans && echo '{"plan":"PLAN_NAME","phase":PHASE_NUM,"updated":'$(date +%s)'}' > ~/.cache/claude-statusline/plans/PLAN_NAME.json
@@ -85,9 +124,15 @@ mkdir -p ~/.cache/claude-statusline/plans && echo '{"plan":"notes","phase":3,"up
 
 This makes the statusline display: `notes - Phase 3`
 
-## Step 4: Gate Check the Phase
+## Step 4: Gate Check Phases
 
-Before spawning a builder, verify the phase is ready.
+Before spawning builders, gate-check each unblocked phase from Step 3. Mark each phase task as `in_progress` before gate-checking:
+
+```
+TaskUpdate({ taskId: "{phase-task-id}", status: "in_progress" })
+```
+
+Apply 4a and 4b to each phase individually.
 
 **4a: Check for skeleton/placeholder content:**
 
@@ -117,46 +162,14 @@ TeamCreate({
 })
 ```
 
-**Spawn the validator (once, reused across phases):**
+**Validators are spawned on-demand per phase** (see Step 7). Unlike the builder (spawned here in Step 6), validators are created when a builder reports completion. This eliminates the single-validator bottleneck — when multiple builders finish in parallel, each gets its own validator reviewing concurrently.
+
+## Step 6: Spawn Builders
+
+Spawn a fresh builder for each unblocked phase that passed gate-checking. **Use parallel Task calls** to launch multiple builders concurrently — max 2-3 at a time to avoid context pressure from simultaneous completion messages.
 
 ```
-Task({
-  description: "Validator teammate",
-  subagent_type: "validator",
-  model: "sonnet",
-  team_name: "{plan-name}-impl",
-  name: "validator",
-  mode: "bypassPermissions",
-  prompt: `You are the validator on the {plan-name}-impl team. Your job is to verify work, not to implement.
-
-**Your Workflow:**
-1. When orchestrator sends you a validation assignment, read the phase file cited
-2. Verify:
-   a. Files listed in the phase's Implementation Steps were created/modified
-   b. Code matches codebase patterns (find a reference file, compare)
-   c. Code quality: no console.log, no any types, server files have import 'server-only'
-   d. Run typecheck: pnpm run typecheck
-   e. Run FULL test suite: pnpm test — report FAIL if any test fails
-3. Report verdict via SendMessage to team-lead
-
-**Verdict:**
-- PASS: SendMessage with "PASS" and brief summary
-- FAIL: SendMessage with "FAIL" and specific issues:
-  - File:line references
-  - Which pattern was violated
-  - Exact fix needed
-
-**Scope:** Validate ONLY what was assigned. Do not suggest improvements.
-
-IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
-})
-```
-
-## Step 6: Spawn Builder for Current Phase
-
-Spawn a fresh builder. The `builder-workflow` skill is preloaded via the builder agent's `skills:` field — the builder already knows how to handle a full phase.
-
-```
+// Spawn builders for ALL unblocked phases in parallel:
 Task({
   description: "Implement phase {NN}",
   subagent_type: "builder",
@@ -170,53 +183,73 @@ Plan folder: $ARGUMENTS
 Follow your preloaded builder-workflow skill. It teaches you how to:
 1. Read the phase and extract requirements
 2. Find reference files and invoke domain skills
-3. Implement with TDD (Step 0 first)
-4. Run tests and typecheck
-5. Run /code-review and fix issues
-6. Report completion to team-lead
+3. Create internal tasks (TaskCreate) for each step — prefix with [Step]. This is REQUIRED for context compact recovery
+4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
+5. Run tests and typecheck
+6. Report completion to team-lead (do NOT run /code-review — the validator handles that independently)
 
 IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
 })
-```
 
-**For independent phases** (no dependency between them), spawn multiple builders in parallel:
-
-```
-Task({ ..., name: "builder-1", prompt: "Implement phase 3..." })
-Task({ ..., name: "builder-2", prompt: "Implement phase 4..." })
-```
-
-Each builder gets a fresh context and works independently.
-
-## Step 7: Wait and Route
-
-Wait for the builder's completion message (automatic delivery — do NOT poll).
-
-When builder reports done:
-
-1. **Send validation assignment to validator:**
-
-```
-SendMessage({
-  type: "message",
-  recipient: "validator",
-  content: "Validate phase {NN}. Phase file: $ARGUMENTS/phase-{NN}-{slug}.md. Check files, patterns, tests, typecheck.",
-  summary: "Validate phase NN"
+Task({
+  description: "Implement phase {MM}",
+  subagent_type: "builder",
+  ...same structure...,
+  name: "builder-2",
+  prompt: `Implement the phase at: $ARGUMENTS/phase-{MM}-{slug}.md ...`
 })
 ```
 
-2. **Wait for validator verdict.**
+Each builder gets a fresh context, a unique name (`builder-1`, `builder-2`, etc.), and works independently. The `builder-workflow` skill is preloaded via the builder agent's `skills:` field.
+
+If only one phase is unblocked, spawn a single builder — this is the common case for phases with sequential dependencies.
+
+## Step 7: Wait and Route
+
+Wait for builder completion messages (automatic delivery — do NOT poll). When multiple builders are active, process each completion as it arrives.
+
+When a builder reports done:
+
+1. **Spawn a fresh validator for this phase:**
+
+```
+Task({
+  description: "Validate phase {NN}",
+  subagent_type: "validator",
+  team_name: "{plan-name}-impl",
+  name: "validator-{N}",
+  mode: "bypassPermissions",
+  prompt: `Validate phase {NN} on the {plan-name}-impl team. Follow the workflow defined in your agent instructions.
+
+Phase file: $ARGUMENTS/phase-{NN}-{slug}.md
+Plan folder: $ARGUMENTS
+
+Run /code-review against the phase file, then verify with typecheck + tests. Report PASS/FAIL to team-lead via SendMessage.`
+})
+```
+
+Each validator gets a unique name matching its builder (`validator-1` for `builder-1`, `validator-2` for `builder-2`, etc.). **Multiple validators can run concurrently** — do NOT wait for one validator to finish before spawning another.
+
+2. **Continue processing other builder completions** as they arrive. If another builder completes while a validator is already running, spawn another validator immediately.
+
+3. **Wait for validator verdicts.** Each validator runs comprehensive code review (reference-grounded, with auto-fix) and verification independently. This is the independent review — the builder never reviewed its own code.
 
 ## Step 8: Handle Verdict
 
 **PASS:**
 1. Update phase YAML frontmatter: `status: done`
 2. Update Phase Table in plan.md: status → "Done"
-3. Shutdown the builder: `SendMessage({ type: "shutdown_request", recipient: "builder-1" })`
-4. Proceed to next phase (back to Step 3)
+3. Mark the phase task as completed: `TaskUpdate({ taskId: "{phase-task-id}", status: "completed" })`
+4. Shutdown the builder and validator for this phase:
+   - `SendMessage({ type: "shutdown_request", recipient: "builder-N" })`
+   - `SendMessage({ type: "shutdown_request", recipient: "validator-N" })`
+5. If other builders/validators are still active, continue waiting for their completions (Step 7)
+6. When all active builders are done, loop back to Step 3 — newly completed phases may unblock additional pending phases
 
 **FAIL:**
-1. Shutdown the current builder (its context may be polluted with bad patterns)
+1. Shutdown the current builder AND validator (both contexts may be stale):
+   - `SendMessage({ type: "shutdown_request", recipient: "builder-N" })`
+   - `SendMessage({ type: "shutdown_request", recipient: "validator-N" })`
 2. Spawn a **fresh builder** with the validator's fix instructions:
 
 ```
@@ -238,17 +271,19 @@ After fixing:
 })
 ```
 
-3. Wait for fix builder → re-validate → repeat until PASS
+3. Wait for fix builder → spawn fresh validator → re-validate → repeat until PASS
 
 ## Step 9: Cleanup
 
 When all phases are done OR an error breakout condition is met:
 
-1. **Shutdown all teammates:**
+1. **Shutdown all active teammates** (builders and validators still running):
 
 ```
+// For each active builder-N and validator-N:
 SendMessage({ type: "shutdown_request", recipient: "builder-1" })
-SendMessage({ type: "shutdown_request", recipient: "validator" })
+SendMessage({ type: "shutdown_request", recipient: "validator-1" })
+// ... repeat for all active agents
 ```
 
 2. **Delete team:** `TeamDelete()`
@@ -266,6 +301,28 @@ rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json
 - User intervention is clearly needed
 
 Do not proceed to the next phase when blocked. Shut down and let the user decide.
+
+---
+
+## Resuming After Context Compact
+
+If you notice context was compacted or you're unsure of current progress:
+
+1. Run `TaskList` to see all tasks and their status
+2. Find the `in_progress` task — that's the phase you were working on
+3. Run `TaskGet {id}` on that task to read full details
+4. Read plan.md to get the Phase Table for broader context
+5. Check if team exists: read `~/.claude/teams/{plan-name}-impl/config.json`
+   - If team exists, teammates are still active — coordinate via messages
+   - If no team, re-create it (Step 5) — validators are spawned on-demand in Step 7
+6. Continue from the in_progress phase — don't restart from Step 1
+
+**Pattern for every work cycle:**
+```
+TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
+```
+
+Tasks are the orchestrator's source of truth for progress — not memory, not plan.md alone.
 
 ---
 

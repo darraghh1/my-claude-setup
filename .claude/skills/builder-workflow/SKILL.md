@@ -1,6 +1,6 @@
 ---
 name: builder-workflow
-description: "Phase-level implementation workflow for builder agents. Handles reading phase files, finding references, invoking domain skills, implementing all steps, testing, and running code review. Preloaded into builder agents via skills: field — not user-invocable."
+description: "Phase-level implementation workflow for builder agents. Handles reading phase files, finding references, invoking domain skills, implementing all steps, and running verification (tests + typecheck). Preloaded into builder agents via skills: field — not user-invocable."
 user-invocable: false
 metadata:
   version: 1.0.0
@@ -23,7 +23,6 @@ The user experienced builders that guessed at patterns, skipped tests, and produ
 | Find reference file | Guessing at patterns, code doesn't match codebase |
 | Invoke domain skill | Missing project-specific conventions |
 | TDD first (Step 0) | Untested code, bugs discovered in production |
-| Code review at end | Blind spots from self-review |
 
 ## Step 1: Read the Phase
 
@@ -82,7 +81,9 @@ The reference file is your ground truth. Your code must structurally match it.
 
 ## Step 4: Create Internal Task List
 
-Create tasks via `TaskCreate` for each implementation step. Tasks survive context compacts — if your context gets compacted mid-phase, `TaskList` → `TaskGet` tells you exactly where you were.
+Create tasks via `TaskCreate` for each implementation step. **This is not optional** — tasks survive context compacts and are your only recovery mechanism if context is compacted mid-phase. Without them, you must restart the entire phase from scratch.
+
+**Prefix all task subjects with `[Step]`** to distinguish from the orchestrator's phase-level tasks in the shared team task list. Mark each task `in_progress` before starting and `completed` when done.
 
 **Task descriptions must be self-contained:**
 - File paths to create/modify
@@ -91,7 +92,7 @@ Create tasks via `TaskCreate` for each implementation step. Tasks survive contex
 - Acceptance criteria for that step
 
 Bad: `"Create the dropdown component"`
-Good: `"Create app/home/[account]/roles/_components/change-role-dropdown.tsx. Props: { membershipId, accountSlug }. Fetch roles via listRolesAction, filter by hierarchy_level. Use @/components/ui Select, Badge."`
+Good: `"[Step] Create change-role-dropdown.tsx at app/home/[account]/roles/_components/. Props: { membershipId, accountSlug }. Fetch roles via listRolesAction, filter by hierarchy_level. Use @/components/ui Select, Badge."`
 
 **Always start with Step 0: TDD.**
 
@@ -117,7 +118,7 @@ Good: `"Create app/home/[account]/roles/_components/change-role-dropdown.tsx. Pr
 
 ## Step 6: Final Verification
 
-Before code review, run the full verification:
+Run the full verification before reporting:
 
 ```bash
 pnpm test
@@ -126,31 +127,9 @@ pnpm run typecheck
 
 Both must pass. Fix any failures before proceeding.
 
-## Step 7: Code Review
+**Scope boundary:** Your job ends here. Do NOT run `/code-review` — an independent validator teammate will review your work after you report. This separation ensures blind spots are caught by a fresh set of eyes.
 
-Invoke the code review skill against your phase:
-
-```
-/code-review [phase-file-path]
-```
-
-Read the review file. **Fix ALL Critical, High, and Medium issues:**
-
-| Severity | Action |
-|----------|--------|
-| **Critical** | Fix immediately — security, crashes, data leakage |
-| **High** | Fix immediately — pattern violations, missing auth |
-| **Medium** | Fix now — real quality issues. Only skip if clearly hallucinated |
-| **Low** | Fix unless clearly hallucinated OR purely cosmetic |
-
-**Hallucination detection** — skip an item ONLY if:
-- It references a file that doesn't exist (verify with Glob)
-- It contradicts patterns from your Step 3 reference read
-- It cites a reference but the claim doesn't match what the file contains
-
-After fixing, re-run `/code-review` until verdict is "Yes".
-
-## Step 8: Report Completion
+## Step 7: Report Completion
 
 Send completion message to the orchestrator:
 
@@ -158,8 +137,8 @@ Send completion message to the orchestrator:
 SendMessage({
   type: "message",
   recipient: "team-lead",
-  content: "Phase [NN] complete.\n\nFiles created/modified:\n- [list]\n\nTests: passing\nTypecheck: passing\nCode review: PASS\n\nAcceptance criteria met:\n- [list key criteria]",
-  summary: "Phase NN complete — all checks pass"
+  content: "Phase [NN] implementation complete — ready for review.\n\nFiles created/modified:\n- [list]\n\nTests: passing\nTypecheck: passing\n\nAcceptance criteria met:\n- [list key criteria]",
+  summary: "Phase NN implemented — ready for review"
 })
 ```
 
@@ -185,8 +164,3 @@ If your context was compacted mid-phase:
 
 **Cause:** Skill name in phase frontmatter doesn't match available skills.
 **Fix:** Check the table in Step 3 for the correct skill name. If the phase focus doesn't match any skill, skip skill invocation and rely on the reference file.
-
-### Code review keeps failing on the same issue
-
-**Cause:** The fix doesn't match what the reference shows.
-**Fix:** Re-read the reference file cited in the review finding. Compare your code line-by-line against the reference pattern.

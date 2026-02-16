@@ -26,6 +26,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 - [Skills](#skills)
   - [Planning](#planning)
   - [Code Quality](#code-quality)
+  - [Document Creation](#document-creation)
   - [Builders](#builders)
   - [Technical](#technical)
   - [MCP Wrappers](#mcp-wrappers)
@@ -51,7 +52,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 16 slash commands | Guided workflows for planning, building, reviewing, and using MCP tools |
+| **Skills** | 17 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
 | **MCP Servers** | 4 integrations | Browser automation, documentation lookup, web search, structured reasoning |
 | **Rules** | 13 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
@@ -89,14 +90,14 @@ The `/implement` skill acts as a **thin dispatcher** that coordinates a team of 
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
 | **Orchestrator** | Entire plan | Finds phases, runs gate checks, spawns/shuts down teammates, routes PASS/FAIL verdicts |
-| **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs `/code-review` |
-| **Validator** | Entire plan (persistent) | Independent verification after each phase — checks files exist, patterns match codebase, tests pass, typecheck clean |
+| **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
+| **Validator** | Entire plan (persistent) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
 
 **Why builders are ephemeral:** Each phase gets a fresh builder with a clean 200K context window. After completion, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3), ensures the `builder-workflow` skill instructions are never compacted away, and means each builder reads fresh references for its specific phase type.
 
 **Why the validator is persistent:** Cross-phase context helps it catch consistency issues — if phase 3's types don't match phase 2's interfaces, a persistent validator notices.
 
-For independent phases (no dependencies between them), multiple builders can be spawned in parallel — each with its own clean context.
+The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Independent phases (`dependencies: []`, or all dependencies already "Done") are spawned as parallel builders — up to 2-3 at a time, each with its own clean context. As phases complete, the orchestrator re-scans for newly unblocked phases.
 
 ### Quality Gates
 
@@ -106,8 +107,8 @@ Quality is enforced at four layers during each phase, in order:
 |-------|------|-----------|---------|
 | **PostToolUse hook** | Every Write/Edit on TS files | `typescript_validator.py` | `any` types, missing `'use server'` directives, `console.log` in production code |
 | **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` | Test failures, type errors |
-| **`/code-review`** | After verification passes | 451-line checklist, codebase-grounded, auto-fix | Pattern deviations, security issues, missing auth checks |
-| **Validator teammate** | After builder reports done | Independent file/pattern/test verification | Anything the builder's self-review missed |
+| **Validator `/code-review`** | After builder reports done | 451-line checklist, codebase-grounded, auto-fix (independent agent) | Pattern deviations, security issues, missing auth checks |
+| **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` | Issues introduced by auto-fixes |
 
 Both `/review-plan` (planning phase) and `/code-review` (implementation phase) are **codebase-grounded** — they read actual files from your project before flagging issues, so findings are specific to your codebase rather than generic advice.
 
@@ -244,12 +245,14 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 18 skill directories (each with SKILL.md)
+├── skills/                         # 19 skill directories (each with SKILL.md)
 │   ├── audit-plan/
 │   ├── code-review/
 │   ├── context7-mcp/
 │   ├── customize/
 │   ├── create-plan/
+│   ├── dev/
+│   ├── hand-crafted-svg/
 │   ├── implement/
 │   ├── improve-prompt/
 │   ├── playwright-e2e/
@@ -375,6 +378,12 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 | **code-review** | `/code-review` | Structured code review with severity-rated findings, file:line references, and fix suggestions |
 | **improve-prompt** | `/improve-prompt` | Refines and improves user prompts for better Claude Code results |
 
+### Document Creation
+
+| Skill | Slash Command | Purpose |
+|-------|--------------|---------|
+| **hand-crafted-svg** | `/hand-crafted-svg` | Creates publication-quality SVG diagrams with gradient fills, drop shadows, color-coded arrows, and precise manual layout — visual quality that Mermaid/dagre cannot achieve |
+
 ### Builders
 
 | Skill | Slash Command | Purpose |
@@ -416,7 +425,7 @@ Agents are specialized sub-agents that can be delegated tasks via the `Task` too
 | **tdd-guide** | Sonnet | Read, Write, Edit, Bash, Grep | Test-Driven Development specialist using Vitest with happy-dom. Guides RED-GREEN-REFACTOR workflow. |
 | **doc-updater** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Documentation maintenance. Updates CLAUDE.md, architecture maps, and feature documentation. |
 | **builder** | Opus | Full tool access | Focused implementation agent. Executes one task at a time, supports skill invocation, follows project patterns. |
-| **validator** | Opus | Full tool access (except NotebookEdit) | Verifies task completion against acceptance criteria. Auto-fixes Critical/High issues, creates fix tasks for the rest. |
+| **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests. Reports PASS/FAIL to orchestrator. |
 
 The `builder` and `validator` agents are designed for team workflows where a lead agent coordinates multiple builders and validators working on different tasks.
 
