@@ -129,7 +129,7 @@ When `/create-plan` spawns review agents, the `delegation.md` enforces:
 
 **Files:** `SKILL.md` (277 lines) + `references/team-operations.md` (156 lines)
 
-**What it does:** Acts as a thin dispatcher that spawns ephemeral builders per phase, a persistent validator, and routes PASS/FAIL verdicts. It does NOT read references, extract patterns, or implement code — builders handle implementation via the preloaded `builder-workflow` skill, and the validator handles independent code review.
+**What it does:** Acts as a thin dispatcher that spawns ephemeral builders and validators per phase and routes PASS/FAIL verdicts. It does NOT read references, extract patterns, or implement code — builders handle implementation via the preloaded `builder-workflow` skill, and the validator handles independent code review.
 
 ### Architecture
 
@@ -137,7 +137,7 @@ When `/create-plan` spawns review agents, the `delegation.md` enforces:
 |------|---------------|----------------|
 | **Orchestrator** (you) | Find phases, gate checks, spawn/shutdown teammates, route verdicts | Stays lean — only plan.md + teammate messages |
 | **Builder** (ephemeral) | Full phase implementation via `builder-workflow` skill | Fresh 200K per phase — never compacted |
-| **Validator** (persistent) | Independent code review via `/code-review`, then tests + typecheck | Accumulates useful cross-phase context |
+| **Validator** (ephemeral) | Independent code review via `/code-review`, then tests + typecheck | Fresh 200K per phase — eliminates bottleneck |
 
 ### The 9-step workflow
 
@@ -157,18 +157,17 @@ Step 4: Gate check each unblocked phase (mark task in_progress):
         ↓ (blocks if skeleton content or Critical issues)
 Step 5: Create team (first phase only)
         - TeamCreate
-        - Spawn validator (persistent, reused across phases)
         ↓
 Step 6: Spawn builders for unblocked phases (parallel, max 2-3)
         - Fresh builder per phase with clean 200K context
         - Minimal prompt: phase file path + plan folder
         - builder-workflow skill handles the rest
         ↓
-Step 7: Wait for builder completions → send each to validator
+Step 7: Wait for builder completions → spawn fresh validator per phase
         ↓
 Step 8: Handle verdict:
-        - PASS → update plan.md + task (completed), shutdown builder, wait for others
-        - FAIL → shutdown builder, spawn fresh builder with fix instructions
+        - PASS → update plan.md + task (completed), shutdown builder + validator, wait for others
+        - FAIL → shutdown builder + validator, spawn fresh builder with fix instructions
         - When all active builders done → back to Step 3 (re-scan)
         ↓
 Step 9: Cleanup (all done or error breakout)
@@ -176,13 +175,14 @@ Step 9: Cleanup (all done or error breakout)
         - TeamDelete
 ```
 
-### Why builders are ephemeral
+### Why builders and validators are ephemeral
 
-Each phase gets a fresh builder with a clean 200K context window. After a phase completes, the builder is shut down and a new one spawned for the next phase. This prevents:
+Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents:
 
 - **Context contamination** — bad patterns from phase 2 don't bleed into phase 3
 - **Skill instruction compaction** — the `builder-workflow` skill is always fully loaded
 - **Stale reference data** — each builder reads fresh references for its phase type
+- **Validator bottleneck** — parallel builders each get their own validator instead of queuing for a single persistent one
 
 ### What the orchestrator does NOT do
 
@@ -193,7 +193,7 @@ Each phase gets a fresh builder with a clean 200K context window. After a phase 
 | Orchestrator invokes domain skills | Builder invokes domain skills (Step 3 of builder-workflow) |
 | Builder runs /code-review (self-review) | Validator runs /code-review (independent review) |
 | Orchestrator validates code | Validator handles all review and verification |
-| Builders persist across phases | Builders are ephemeral — fresh per phase |
+| Builders persist across phases | Both builders and validators are ephemeral — fresh per phase |
 
 ### Hard gates that block implementation
 
@@ -387,9 +387,9 @@ Quality checks execute in this order during each phase:
 
 The orchestrator's context budget stays lean — it only holds plan.md and teammate messages. All heavy lifting (reading references, invoking skills, implementing, reviewing) happens in builders with fresh 200K context windows. This prevents the orchestrator from hitting context limits on large plans.
 
-### Ephemeral builders, persistent validator
+### Ephemeral builders and validators
 
-Builders are spawned fresh per phase and shut down after. This prevents context contamination between phases and ensures the `builder-workflow` skill instructions are always fully loaded (never compacted). The validator is persistent because cross-phase context actually helps it catch consistency issues.
+Both builders and validators are spawned fresh per phase and shut down after the review cycle completes. This prevents context contamination between phases, ensures skill instructions are always fully loaded (never compacted), and eliminates the single-validator bottleneck when multiple builders run in parallel.
 
 ### Reviews folder separation
 

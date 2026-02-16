@@ -91,11 +91,9 @@ The `/implement` skill acts as a **thin dispatcher** that coordinates a team of 
 |------|----------|---------------|
 | **Orchestrator** | Entire plan | Finds phases, runs gate checks, spawns/shuts down teammates, routes PASS/FAIL verdicts |
 | **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
-| **Validator** | Entire plan (persistent) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
+| **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
 
-**Why builders are ephemeral:** Each phase gets a fresh builder with a clean 200K context window. After completion, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3), ensures the `builder-workflow` skill instructions are never compacted away, and means each builder reads fresh references for its specific phase type.
-
-**Why the validator is persistent:** Cross-phase context helps it catch consistency issues — if phase 3's types don't match phase 2's interfaces, a persistent validator notices.
+**Why both are ephemeral:** Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3), ensures skill instructions are never compacted away, and eliminates the single-validator bottleneck when multiple builders run in parallel.
 
 The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Independent phases (`dependencies: []`, or all dependencies already "Done") are spawned as parallel builders — up to 2-3 at a time, each with its own clean context. As phases complete, the orchestrator re-scans for newly unblocked phases.
 
