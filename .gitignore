@@ -26,6 +26,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Drafts
+reddit-post.md
+
 # Editor/IDE
 .vscode/
 .idea/
