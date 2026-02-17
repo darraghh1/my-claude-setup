@@ -56,6 +56,47 @@ These rules prevent the most common mistakes when hand-crafting SVG diagrams. Ea
    python3 .claude/skills/hand-crafted-svg/scripts/validate-svg.py <output.svg>
    ```
 
+## Quick Start
+
+For faster, more reliable diagram creation — especially recommended when running on Sonnet:
+
+1. **Describe the diagram in JSON** — list your groups and nodes:
+   ```json
+   {
+     "groups": [
+       {
+         "id": "my-group", "title": "Group Title", "theme": "blue",
+         "nodes": [
+           { "id": "step1", "text": "Do something", "type": "action" },
+           { "id": "check", "text": "OK?", "type": "diamond" },
+           { "id": "done", "text": "Done", "type": "pill" }
+         ]
+       }
+     ]
+   }
+   ```
+   Node types: `action`, `diamond`, `pill`, `phase-done`. Optional: `"subtitle"`, `"style": "slash"`.
+   See [`references/example-layout.json`](references/example-layout.json) for a multi-group example.
+
+2. **Generate the skeleton SVG** — the layout helper calculates all coordinates:
+   ```bash
+   python3 .claude/skills/hand-crafted-svg/scripts/layout-helper.py diagram.json --svg output.svg
+   ```
+   This produces a valid SVG with groups, nodes, and straight arrows already positioned.
+
+3. **Add the hard parts manually** — the skeleton handles placement; you add:
+   - Cross-group connectors (paths between groups)
+   - Loop-back arrows (route outside group boundaries, 20-30px margin)
+   - Annotation callouts (yellow boxes with dashed connectors)
+   - Use [`references/svg-patterns.md`](references/svg-patterns.md) sections 4c-4e and 6 for templates.
+
+4. **Validate** — catch structural issues before delivering:
+   ```bash
+   python3 .claude/skills/hand-crafted-svg/scripts/validate-svg.py output.svg
+   ```
+
+For a minimal complete example showing every pattern (group, nodes, diamond, pill, loopback, annotation), read [`references/starter-template.svg`](references/starter-template.svg).
+
 ## Workflow
 
 Follow these five steps for every diagram. Do not skip steps — each one prevents specific categories of errors.
@@ -194,6 +235,8 @@ The canonical example is [`docs/pipeline.svg`](../../../docs/pipeline.svg) — a
 For detailed reference material:
 - [`references/design-system.md`](references/design-system.md) — color palette, typography, node types, spacing
 - [`references/svg-patterns.md`](references/svg-patterns.md) — copy-paste SVG code templates
+- [`references/starter-template.svg`](references/starter-template.svg) — minimal complete working diagram (copy and extend)
+- [`references/example-layout.json`](references/example-layout.json) — example input for the layout helper script
 
 ## Troubleshooting
 

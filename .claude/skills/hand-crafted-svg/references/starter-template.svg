@@ -1,0 +1,113 @@
+<!-- ═══════════════════════════════════════════════════════════════════════
+     STARTER TEMPLATE — Minimal complete hand-crafted SVG diagram.
+     Copy this file as a starting point for new diagrams.
+
+     Demonstrates every pattern:
+       - Group container with gradient fill
+       - Action node (slash command style)
+       - Decision diamond with Yes/No branching
+       - Done pill (terminal state)
+       - Straight arrows with semantic markers
+       - Fail loopback routed outside group boundary
+       - Annotation callout with dashed connector
+
+     Canvas: 440 × 310
+     ═══════════════════════════════════════════════════════════════════════ -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 310"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+
+  <!-- ── Definitions: markers, shadow, gradient ─────────────────────── -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrow-pass" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e"/>
+    </marker>
+    <marker id="arrow-fail" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ef4444"/>
+    </marker>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#eff6ff"/>
+      <stop offset="100%" stop-color="#dbeafe"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ── Styles ─────────────────────────────────────────────────────── -->
+  <style>
+    .title { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+    .node-text { font-size: 13px; font-weight: 500; }
+    .node-sub { font-size: 11px; fill: #6b7280; }
+    .label { font-size: 11px; font-weight: 600; }
+    .label-pass { fill: #16a34a; }
+    .label-fail { fill: #dc2626; }
+    .label-fix { fill: #d97706; }
+    .slash { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+  </style>
+
+  <!-- ═══ GROUP: Process ═════════════════════════════════════════════
+       Blue gradient, bounding box: (30, 20) → (260, 290)
+       Center-x: 145                                                   -->
+  <g>
+    <rect x="30" y="20" width="230" height="270" rx="12"
+          fill="url(#blueGrad)" stroke="#93c5fd" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="145" y="46" text-anchor="middle" class="title" fill="#1d4ed8">Process</text>
+
+    <!-- Action node: /step-a ──────────────────────────────────────── -->
+    <rect x="55" y="64" width="180" height="40" rx="8"
+          fill="#fff" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+    <text x="145" y="88" text-anchor="middle" class="slash" fill="#2563eb">/step-a</text>
+
+    <!-- Arrow: /step-a → Passes? -->
+    <line x1="145" y1="104" x2="145" y2="124" stroke="#6b7280" stroke-width="1.5"
+          marker-end="url(#arrow)"/>
+
+    <!-- Decision diamond: Passes? (center 145,150, half-w 55, half-h 25) -->
+    <polygon points="145,125 200,150 145,175 90,150"
+             fill="#fff" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="145" y="154" text-anchor="middle" class="node-text" fill="#1e40af"
+          font-size="11">Passes?</text>
+
+    <!-- Yes branch: diamond bottom → Done pill -->
+    <line x1="145" y1="175" x2="145" y2="200" stroke="#22c55e" stroke-width="1.5"
+          marker-end="url(#arrow-pass)"/>
+    <text x="157" y="193" class="label label-pass">Yes</text>
+
+    <!-- Done pill (terminal state) ────────────────────────────────── -->
+    <rect x="75" y="202" width="140" height="32" rx="16"
+          fill="#dcfce7" stroke="#16a34a" stroke-width="2" filter="url(#shadow)"/>
+    <text x="145" y="222" text-anchor="middle" class="node-text" fill="#15803d"
+          font-weight="700">Done</text>
+
+    <!-- Fail loopback: diamond left tip → outside group → back up → /step-a
+         Routes at x=18, 12px outside group left edge (x=30)          -->
+    <line x1="90" y1="150" x2="18" y2="150" stroke="#ef4444" stroke-width="1.5"/>
+    <line x1="18" y1="150" x2="18" y2="84" stroke="#ef4444" stroke-width="1.5"/>
+    <line x1="18" y1="84" x2="53" y2="84" stroke="#ef4444" stroke-width="1.5"
+          marker-end="url(#arrow-fail)"/>
+    <text x="8" y="120" class="label label-fix"
+          transform="rotate(-90 8 120)">Fix</text>
+  </g>
+
+  <!-- ═══ ANNOTATION CALLOUT ═════════════════════════════════════════
+       Yellow box positioned right of diamond, connected via dashed line -->
+  <rect x="280" y="118" width="140" height="58" rx="6"
+        fill="#fefce8" stroke="#eab308" stroke-width="1" filter="url(#shadow)"/>
+  <text x="350" y="136" text-anchor="middle" class="title" fill="#a16207"
+        font-size="10">Validation</text>
+  <text x="350" y="151" text-anchor="middle" class="node-sub"
+        font-size="10">Runs lint + typecheck</text>
+  <text x="350" y="164" text-anchor="middle" class="node-sub"
+        font-size="10">Must pass all checks</text>
+
+  <!-- Dashed connector: diamond right tip → annotation left edge -->
+  <line x1="200" y1="150" x2="278" y2="147" stroke="#eab308"
+        stroke-width="1" stroke-dasharray="4 3"/>
+
+</svg>
