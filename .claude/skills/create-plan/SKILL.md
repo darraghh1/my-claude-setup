@@ -128,6 +128,10 @@ If the feature involves React components, Next.js pages, or UI work, invoke this
 
 This loads 57 performance rules across 8 categories. Reference these when designing data fetching patterns, component architecture, and bundle optimization requirements.
 
+### Pre-Implementation Analysis
+
+Before scoping phases, run through the checklist in `.claude/rules/pre-implementation-analysis.md`. Its 7 dimensions — existing patterns, blast radius, security surface, performance, maintainability, multi-tenant safety, and upstream compatibility — directly inform phase boundaries and what each phase's `Prerequisites & Clarifications` section should cover. Findings from this analysis (e.g. "touches auth flow", "new table needs RLS") should surface in the relevant phase files, not be left implicit.
+
 ### Phase Constraints
 
 Phases that exceed one context window cause Claude to lose earlier context mid-implementation, producing incomplete or inconsistent code. Each phase should be atomic enough for implementation in **1 context window** (~15KB document, ~2-3 hour focused session).

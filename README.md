@@ -55,7 +55,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | **Skills** | 17 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
 | **MCP Servers** | 4 integrations | Browser automation, documentation lookup, web search, structured reasoning |
-| **Rules** | 13 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
+| **Rules** | 14 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
 ---
 
@@ -229,7 +229,7 @@ Optional:
 │       ├── validate_new_file.py         # Checks a new file was created
 │       ├── validate_no_placeholders.py  # Detects placeholder/skeleton content
 │       └── validate_tdd_tasks.py        # Enforces TDD task ordering in plans
-├── rules/                          # 13 rule files
+├── rules/                          # 14 rule files
 │   ├── admin.md                    # Admin operations guidelines
 │   ├── coding-style.md             # TypeScript/React coding standards
 │   ├── database.md                 # Supabase/Postgres patterns and RLS
@@ -239,6 +239,7 @@ Optional:
 │   ├── mcp-tools.md                # MCP server usage guide
 │   ├── pages-and-layouts.md        # Next.js page and layout conventions
 │   ├── patterns.md                 # Data fetching, mutations, service patterns
+│   ├── pre-implementation-analysis.md  # Blast radius, security, and pattern checks before writing code
 │   ├── route-handlers.md           # API route handler conventions
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
@@ -444,6 +445,7 @@ Rule files in `.claude/rules/` are automatically loaded by Claude Code and provi
 | `mcp-tools.md` | MCP server usage guide: when to use each server, quick references, common library IDs, rules for each tool |
 | `pages-and-layouts.md` | Next.js App Router page/layout conventions, async params handling, loading states, error boundaries |
 | `patterns.md` | Data fetching with loaders, mutation flow with Server Actions, service pattern, route structure, React Query usage |
+| `pre-implementation-analysis.md` | Pre-code checklist: blast radius, existing patterns, security surface, performance, maintainability, and multi-tenant safety. Scoped to `.ts`/`.tsx` files. |
 | `route-handlers.md` | API route handler conventions, request/response patterns, middleware |
 | `security.md` | RLS enforcement, secret management, authentication, multi-tenant data isolation, OAuth callbacks, security checklist |
 | `testing.md` | Vitest configuration, mock patterns, TDD workflow, component testing, E2E testing approach |
