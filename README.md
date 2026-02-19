@@ -37,6 +37,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
   - [Context7](#context7)
   - [Tavily](#tavily)
   - [Sequential Thinking](#sequential-thinking)
+  - [Draw.io](#drawio)
 - [Status Line](#status-line)
 - [Customization Guide](#customization-guide)
 - [Troubleshooting](#troubleshooting)
@@ -54,7 +55,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
 | **Skills** | 17 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
-| **MCP Servers** | 4 integrations | Browser automation, documentation lookup, web search, structured reasoning |
+| **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
 | **Rules** | 14 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
 ---
@@ -251,7 +252,7 @@ Optional:
 │   ├── customize/
 │   ├── create-plan/
 │   ├── dev/
-│   ├── hand-crafted-svg/
+│   ├── drawio-mcp/
 │   ├── implement/
 │   ├── improve-prompt/
 │   ├── playwright-e2e/
@@ -381,7 +382,7 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 
 | Skill | Slash Command | Purpose |
 |-------|--------------|---------|
-| **hand-crafted-svg** | `/hand-crafted-svg` | Creates publication-quality SVG diagrams with gradient fills, drop shadows, color-coded arrows, and precise manual layout — visual quality that Mermaid/dagre cannot achieve |
+| **drawio-mcp** | `/drawio-mcp` | Creates and edits draw.io diagrams via the draw.io MCP server with real-time browser preview — supports flowcharts, architecture diagrams, and system visualizations with a semantic design system |
 
 ### Builders
 
@@ -455,7 +456,7 @@ Rule files in `.claude/rules/` are automatically loaded by Claude Code and provi
 
 ## MCP Servers
 
-Four MCP (Model Context Protocol) servers are configured in `.mcp.json`. They provide Claude Code with additional capabilities via direct tool calls.
+Five MCP (Model Context Protocol) servers are configured in `.mcp.json`. They provide Claude Code with additional capabilities via direct tool calls.
 
 ### Playwright
 
@@ -556,6 +557,33 @@ npx playwright install chromium
 **When not to use:**
 - Simple errors with clear stack traces
 - Straightforward implementation decisions
+
+### Draw.io
+
+**Purpose:** Create, edit, and export draw.io diagrams with real-time browser preview.
+
+**Setup:** No API key required. Opens a browser tab with an embedded draw.io editor.
+
+```json
+{
+  "drawio": {
+    "command": "npx",
+    "args": ["-y", "@next-ai-drawio/mcp-server@latest"]
+  }
+}
+```
+
+**Key tools:**
+
+| Tool | Usage |
+|------|-------|
+| `mcp__drawio__start_session` | Start a session (opens browser) -- always call first |
+| `mcp__drawio__create_new_diagram` | Create a new diagram (replaces entire canvas) |
+| `mcp__drawio__get_diagram` | Get current diagram XML -- required before editing |
+| `mcp__drawio__edit_diagram` | Add, update, or delete elements in an existing diagram |
+| `mcp__drawio__export_diagram` | Export to `.drawio`, `.png`, or `.svg` |
+
+**Important:** Always call `start_session` before any other tool. Always call `get_diagram` before `edit_diagram` -- the server enforces a 30-second freshness window to prevent overwriting manual changes.
 
 ---
 

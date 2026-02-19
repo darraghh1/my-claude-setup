@@ -23,6 +23,7 @@ Bash: claude mcp call playwright browser_snapshot ...  # WRONG — not a CLI com
 | **Context7** | `mcp__context7__` | Library/framework documentation | Googling docs, outdated training data |
 | **Tavily** | `mcp__tavily__` | Web search, URL extraction, site crawling | `WebSearch`, `WebFetch` for complex queries |
 | **Sequential Thinking** | `mcp__sequential-thinking__` | Structured multi-step reasoning | Unstructured debugging of complex problems |
+| **Draw.io** | `mcp__drawio__` | Create/edit diagrams with browser preview | Hand-crafting SVG, manual diagram tools |
 
 ---
 

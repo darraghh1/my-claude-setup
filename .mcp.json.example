@@ -26,6 +26,10 @@
       "env": {
         "TAVILY_API_KEY": "your-tavily-api-key-goes-here"
       }
+    },
+    "drawio": {
+      "command": "npx",
+      "args": ["-y", "@next-ai-drawio/mcp-server@latest"]
     }
   }
 }
