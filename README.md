@@ -40,6 +40,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
   - [Sequential Thinking](#sequential-thinking)
   - [Draw.io](#drawio)
 - [Status Line](#status-line)
+- [Prompt Caching](#prompt-caching)
 - [Customization Guide](#customization-guide)
 - [Troubleshooting](#troubleshooting)
 - [Plugins](#plugins)
@@ -54,7 +55,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 23 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
+| **Skills** | 24 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
 | **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
 | **Rules** | 15 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
@@ -296,8 +297,9 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 23 skill directories (each with SKILL.md)
+├── skills/                         # 24 skill directories (each with SKILL.md)
 │   ├── audit-plan/
+│   ├── cache-audit/
 │   ├── code-review/
 │   ├── context7-mcp/
 │   ├── customize/
@@ -455,6 +457,7 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 |-------|--------------|---------|
 | **code-review** | `/code-review` | Structured code review with severity-rated findings, file:line references, and fix suggestions |
 | **improve-prompt** | `/improve-prompt` | Refines and improves user prompts for better Claude Code results |
+| **cache-audit** | `/cache-audit` | Audits your setup for prompt caching efficiency -- checks prefix stability, hook patterns, dynamic content size, rule duplication, and token budget |
 
 ### Document Creation
 
@@ -764,6 +767,40 @@ The script receives JSON on stdin from Claude Code containing model info, contex
 - **Claude Code Max or Pro subscription** — the OAuth usage endpoint requires an active subscription
 - **Authenticated session** — you must be logged in (the script reads `~/.claude/.credentials.json`)
 - No additional dependencies — uses only Python standard library (`urllib`, `json`, `subprocess`)
+
+---
+
+## Prompt Caching
+
+This setup is designed to maximise prompt cache hit rates. The Anthropic API caches the **prefix** of each request — system prompt, tool definitions, CLAUDE.md, rules, skill registry, and MEMORY.md. When the prefix is identical between turns, those tokens cost ~90% less and process faster. Any change to the prefix (editing CLAUDE.md mid-session, adding/removing tools, switching models) invalidates everything after the change point.
+
+### How This Setup Stays Cache-Friendly
+
+| Design Decision | Why It Helps |
+|----------------|-------------|
+| **Hooks inject via `additionalContext`** | Dynamic data (git status, quality warnings, subagent rules) goes into `<system-reminder>` messages, not the prefix. The prefix stays stable. |
+| **Static CLAUDE.md and rules** | No timestamps, git refs, or session-specific data in any prefix file. All 15 rule files are pure instructions. |
+| **Fixed MCP tool set** | 5 MCP servers configured at session start, no conditional loading. Tool schemas are stable between turns. |
+| **Model delegation via subagents** | Agents use different models (Sonnet for reviewers, Opus for builders) but each runs in a separate conversation. The parent's cache is never broken by model switches. |
+| **Minimal per-turn injection** | SessionStart injects ~50 chars (git branch). UserPromptSubmit injects nothing. Per-turn overhead is < 500 chars. |
+| **Two-layer rules without duplication** | User-level rules (the WHAT) + project-level `project-implementation.md` (the HOW). No duplicate filenames across levels means no wasted tokens from additive loading. |
+
+### Token Budget
+
+Measured via `/cache-audit` (run it periodically to check for regressions):
+
+| Component | Size | Notes |
+|-----------|------|-------|
+| Static prefix (CLAUDE.md + rules + MEMORY.md) | ~12K tokens | Cached between turns (~90% savings) |
+| Per-turn injection | ~125 tokens | SessionStart + PostToolUse warnings |
+| Per-builder spawn (SubagentStart full tier) | ~9K tokens | 13 rule files + skill registry, read fresh from disk |
+| Per-lightweight spawn (SubagentStart compact) | ~180 tokens | Condensed 11-bullet summary |
+
+The static prefix consumes ~6% of the 200K context window, leaving 94% for actual conversation and code.
+
+### The `/cache-audit` Skill
+
+Run `/cache-audit` to get a scored 8-check report covering prefix ordering, hook injection patterns, tool stability, model consistency, dynamic content size, fork safety, static prefix budget, and rule layer efficiency. It reads your actual config files and measures real sizes — not estimates.
 
 ---
 
