@@ -6,12 +6,11 @@ paths:
 
 # UI Components & JSX Patterns
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 ## Component Library
 
-<!-- CUSTOMIZE: Update to match your component library (shadcn/ui, Radix, your own packages, etc.)
-
-All reusable UI lives in your shared component library. Building custom components when the library
-already has the equivalent creates double maintenance and visual inconsistency.
+All reusable UI lives in your shared component library (e.g., shadcn/ui at `@/components/ui`). Building custom components when the library already has the equivalent creates double maintenance and visual inconsistency.
 
 ### Import Pattern
 
@@ -20,9 +19,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 ```
--->
 
-Check your component library before building custom UI. Common components to look for:
+### Common Components
 
 | Category | Components |
 |----------|-----------|
@@ -36,12 +34,12 @@ Check your component library before building custom UI. Common components to loo
 
 ## JSX Patterns
 
-### Class Names — Use `cn` for Tailwind Merging
+### Class Names -- Use `cn` for Tailwind Merging
 
 Without `cn`, conflicting Tailwind classes produce unpredictable results. Use `cn` (from `clsx` + `tailwind-merge`) to resolve conflicts deterministically:
 
 ```typescript
-import { cn } from '@/lib/utils'; // or wherever your cn utility lives
+import { cn } from '@/lib/utils';
 
 // Merges Tailwind classes correctly, resolves conflicts
 <div className={cn('base-class', { 'text-lg': isLarge }, className)} />
@@ -61,7 +59,7 @@ return <DataView data={data} />;
 ### Toasts
 
 ```typescript
-import { toast } from 'sonner'; // or your toast library
+import { toast } from 'sonner';
 
 toast.promise(myAction(data), {
   loading: 'Creating...',

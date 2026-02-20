@@ -6,13 +6,11 @@
 
 **Wrong:**
 ```typescript
-new Date(dateStr).toLocaleDateString(...) // UTC — shows wrong day
+new Date(dateStr).toLocaleDateString(...) // UTC -- shows wrong day
 ```
 
 **Correct:**
 ```typescript
 const [y, m, d] = dateStr.split('-').map(Number);
-const date = new Date(y!, m! - 1, d!); // Local time — correct day
+const date = new Date(y!, m! - 1, d!); // Local time -- correct day
 ```
-
-<!-- CUSTOMIZE: Note which files in your project use this pattern -->

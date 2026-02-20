@@ -1,7 +1,7 @@
 ---
 title: "Phase NN: [Title]"
 description: "[One sentence goal]"
-skill: "[postgres-expert | server-action-builder | react-form-builder | playwright-e2e | vercel-react-best-practices | web-design-guidelines]"
+skill: "[postgres-expert | server-action-builder | service-builder | react-form-builder | playwright-e2e | vercel-react-best-practices | web-design-guidelines | none]"
 status: pending
 dependencies: []
 tags: [phase, implementation]

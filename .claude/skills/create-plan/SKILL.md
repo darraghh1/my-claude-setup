@@ -1,6 +1,6 @@
 ---
 name: create-plan
-description: "Create complete implementation plans with phases for new features or projects. Use when starting a new feature, planning a refactor, or designing a system ('create a plan', 'plan this feature', 'design the phases for...', 'plan the implementation'). Do NOT use for implementing code (use /implement), reviewing existing plans (use /review-plan), or quick single-file changes."
+description: "Create phased implementation plans for new features or projects. Generates plan.md with phase files, TDD ordering, and acceptance criteria."
 argument-hint: "[feature-name] [description]"
 context: fork
 agent: general-purpose
@@ -8,8 +8,6 @@ model: sonnet
 allowed-tools: Read, Write, Edit, Glob, Grep, Task, Skill, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion
 metadata:
   version: 1.0.0
-  category: workflow-automation
-  tags: [planning, phases, architecture, feature-design]
 ---
 
 # Create Complete Plan

@@ -1,6 +1,6 @@
 ---
 name: review-plan
-description: "Review plan.md OR a single phase file against templates AND codebase compliance. Use after creating planning documents or when asked to 'review the plan', 'check the phase', 'verify template compliance'. Each invocation reviews ONE file only. Do NOT use for creating plans (use /create-plan) or implementing phases (use /implement)."
+description: "Review plan.md or a single phase file against templates and codebase compliance. One file per invocation."
 argument-hint: "[plan-folder] [phase NN]"
 context: fork
 agent: general-purpose
@@ -8,8 +8,6 @@ model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(python*) TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.1.0
-  category: workflow-automation
-  tags: [review, planning, quality-assurance, compliance]
 ---
 
 <!-- ultrathink: Enable extended thinking for thorough plan review -->

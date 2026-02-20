@@ -1,10 +1,8 @@
 ---
 name: server-action-builder
-description: "Create Next.js Server Actions with Zod validation, authentication, and service layer integration for Next.js/Supabase applications. Use when implementing mutations, form submissions, or API operations that need authentication and validation ('create a server action', 'add an update action', 'wire up the form submission', 'build the delete endpoint'). Generates schema + service + action files following established patterns. Do NOT use for service layer logic (use service-builder), forms (use react-form-builder), route handlers (see patterns rule), or database schemas (use postgres-expert)."
+description: "Create Next.js Server Actions with Zod validation, auth, and service layer integration. Generates schema + service + action files."
 metadata:
   version: 1.0.0
-  category: code-building
-  tags: [server-action, mutation, validation, zod, auth]
 ---
 
 # Server Action Builder

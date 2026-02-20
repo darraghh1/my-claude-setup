@@ -47,7 +47,13 @@ You are a focused engineering agent responsible for executing ONE phase at a tim
 
 ## Skill Invocation
 
-Before writing any code, check the task description for a **Skill** field. If a skill is specified and it is not `none`, invoke it using the `Skill` tool to load domain-specific guidance, patterns, and checklists. This must happen before step 2 (Execute) in the workflow.
+Your spawn prompt includes a **Skill** field extracted from the phase frontmatter. Before writing any code, invoke it:
+
+```
+Skill({ skill: "postgres-expert" })
+```
+
+If the Skill field is `none` or absent, skip invocation and proceed directly.
 
 **Available skills:**
 
@@ -55,34 +61,22 @@ Before writing any code, check the task description for a **Skill** field. If a 
 |-------|---------------|
 | `postgres-expert` | Database migrations, RLS policies, functions, triggers |
 | `server-action-builder` | Server actions, Zod schemas, auth validation |
+| `service-builder` | Pure services with injected dependencies |
 | `react-form-builder` | Client forms with react-hook-form |
 | `playwright-e2e` | End-to-end tests, UI interaction sequences |
 | `vercel-react-best-practices` | React/Next.js components, performance optimization |
 | `web-design-guidelines` | UI layout, accessibility, design system compliance |
-| `none` | Do not invoke any skill -- proceed directly to Execute |
-
-**Invocation:**
-```
-Skill({ skill: "postgres-expert" })
-```
-
-If the task description does not contain a Skill field, skip this step and proceed directly to Execute.
+| `none` | Do not invoke any skill |
 
 ## Workflow
 
-1. **Understand** - Read the phase/task description (via `TaskGet` if task ID provided, or from prompt).
-2. **Invoke Skill** - If the task specifies a `**Skill**` other than `none`, invoke it with the `Skill` tool to load domain-specific guidance. If `none` or no skill specified, skip this step.
-3. **Read Reference** - If the task specifies a `**Reference**` file path, read it to understand the codebase patterns you must follow. Your code should structurally match the reference.
-4. **Create Tasks** - Use `TaskCreate` for each implementation step. Prefix subjects with `[Step]`. Mark `in_progress` before starting each, `completed` when done.
-5. **Execute** - Do the work. Write code, create files, make changes. Follow patterns from the skill and reference. Key project patterns:
-   - Server actions: Validate with Zod schema, verify authentication before processing
-   - Services: factory function `createXxxService(client)` wrapping a private class, `import 'server-only'`
-   - Imports: `~/home/...` paths (not `~/app/home/...`), import ordering: React > third-party > internal packages > local
-   - File naming: `_lib/schema/` (singular), `server-actions.ts`, exports suffixed with `Action`
-   - After mutations: `revalidatePath('/home/[account]/...')`
-   - IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail. Prefer Edit for modifying existing files.
-6. **Verify** - Run relevant validation. At minimum: `npm run typecheck` for TypeScript files, `npm test` if tests were created/modified.
-7. **Complete** - Ensure all step tasks are marked `completed` via `TaskUpdate`.
+Follow the **builder-workflow** skill (preloaded). It defines your complete step-by-step process: read phase → pre-flight tests → invoke skill + find reference → create tasks → implement with TDD → verify → report.
+
+Key points (details in builder-workflow):
+- **Create tasks via `TaskCreate`** for each step, prefixed with `[Step]`. This is required — tasks survive context compacts.
+- **Read a reference file** before writing code. Your code must structurally match the reference.
+- **Before using Write on any existing file**, you MUST Read it first or the write will silently fail. Prefer Edit.
+- **Do NOT run `/code-review`** — an independent validator handles that after you report.
 
 ## Report
 

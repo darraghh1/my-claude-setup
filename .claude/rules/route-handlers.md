@@ -8,6 +8,8 @@ paths:
 
 Every API route handler must validate inputs and authenticate requests. Skipping either means unauthenticated or unvalidated requests reach the handler.
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 ## Pattern
 
 ```typescript
@@ -35,14 +37,11 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// Unauthenticated route (use with caution — e.g., webhooks)
+// Unauthenticated route (use with caution -- e.g., webhooks)
 export async function GET() {
   return NextResponse.json({ status: 'ok' });
 }
 ```
-
-<!-- CUSTOMIZE: If your framework provides a route handler wrapper that handles auth + validation,
-use it consistently instead of manual checks. -->
 
 ## When to Use
 

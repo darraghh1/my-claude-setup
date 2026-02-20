@@ -1,11 +1,9 @@
 ---
 name: improve-prompt
-description: "Improve a rough or thin prompt into a detailed, actionable one using project context. Use when the user types '/improve-prompt <rough idea>' or '/?? <rough idea>'. Takes a vague request and returns a well-structured prompt with specific file paths, project patterns, acceptance criteria, and relevant context. Do NOT use for executing tasks — this only improves the prompt text."
+description: "Improve a rough prompt into a detailed, actionable one using project context. Returns a well-structured prompt with file paths, patterns, and acceptance criteria."
 argument-hint: "<rough prompt to improve>"
 metadata:
   version: 1.0.0
-  category: productivity
-  tags: [prompting, productivity, workflow]
 ---
 
 # Improve Prompt

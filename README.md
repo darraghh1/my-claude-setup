@@ -83,7 +83,7 @@ Traditional development plans have 3-5 large phases. This doesn't work with AI-a
 | "Phase 02: Full Feature Implementation" | Break into atomic steps |
 | "Phase 03: Testing and Polish" | TDD is Step 0 in *every* phase |
 
-Each phase file includes a `skill:` field in its frontmatter that tells the builder which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The builder reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
+Each phase file includes a `skill:` field in its frontmatter specifying which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The orchestrator extracts this value and passes it directly to the builder in the spawn prompt, so skill invocation is explicit rather than discovered indirectly. The builder also reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
 
 ### Team Orchestration
 
@@ -92,10 +92,12 @@ The `/implement` skill acts as a **thin dispatcher** that coordinates a team of 
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
 | **Orchestrator** | Entire plan | Finds phases, runs gate checks, spawns/shuts down teammates, routes PASS/FAIL verdicts |
-| **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
+| **Builder** | One phase (ephemeral) | Full phase implementation — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
 | **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
 
 **Why both are ephemeral:** Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
+
+**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
 
 The orchestrator uses a **batch processing model** with strict concurrency limits:
 
@@ -343,7 +345,7 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **PostToolUseFailure** | `post_tool_use_failure.py` | After a tool call fails | Pattern-matches error messages and injects actionable guidance (e.g., "Read file before Edit", "Don't retry denied commands"). |
 | **Notification** | `notification.py` | When Claude needs input | Plays a sound for permission prompts and elicitation dialogs. Ignores idle/auth events. |
 | **Stop** | `stop.py` | When Claude stops | Exports JSONL transcript to `chat.json`. Plays completion sound. |
-| **SubagentStart** | `subagent_start.py` | When a sub-agent launches | Injects project coding rules into the sub-agent's context (sub-agents do not inherit `CLAUDE.md`). |
+| **SubagentStart** | `subagent_start.py` | When a sub-agent launches | Tiered context injection: builder/validator agents get full rule files (read fresh from disk) + skill registry (~9.5K tokens); all other agents get a condensed 11-bullet summary (~180 tokens). Only fresh injection point — everything else is stale parent cache. |
 | **SubagentStop** | `subagent_stop.py` | When a sub-agent finishes | Logs sub-agent completion with agent type and transcript path. |
 | **PreCompact** | `pre_compact.py` | Before context compaction | Logs compaction events. Optionally backs up the transcript before compression. |
 | **UserPromptSubmit** | `user_prompt_submit.py` | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display. |
@@ -518,25 +520,47 @@ The `builder` and `validator` agents are designed for team workflows where a lea
 
 ## Rules
 
-Rule files in `.claude/rules/` are automatically loaded by Claude Code and provide domain-specific coding standards.
+Rules use a **two-layer complementary system**. User-level rules define universal patterns (the WHAT). Each project can add a single `project-implementation.md` with framework-specific overrides (the HOW). Claude sees both layers and applies the more specific instruction when both are present.
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| **User-level** | `~/.claude/rules/` (symlinked from this repo) | Generic Next.js/Supabase/TypeScript patterns. Complete and correct on their own. |
+| **Project-level** | `your-project/.claude/rules/project-implementation.md` | Framework-specific overrides — maps universal patterns to your stack's utilities. |
+
+Rules are **additive** in Claude Code — both levels load simultaneously. 11 of the 15 user-level rules include a cross-reference: _"If your project has a `project-implementation.md` rule, check it for framework-specific overrides."_ This guides Claude to check for project-specific implementations of each universal pattern.
+
+### User-Level Rules (15 files)
 
 | Rule File | What It Covers |
 |-----------|---------------|
 | `admin.md` | Admin operations, privileged access patterns, admin client usage guidelines |
 | `coding-style.md` | Immutability, error handling with structured logging, Server Action conventions, import ordering, React best practices |
 | `database.md` | Supabase/Postgres patterns: migrations, type inference, SQL style, RLS helpers, views with `security_invoker`, common patterns |
+| `date-formatting.md` | Date parsing safety: YYYY-MM-DD strings must be parsed as local time (not UTC) to avoid off-by-one display bugs |
 | `forms.md` | Form handling with `react-hook-form` + Zod, schema sharing between client and server, validation patterns |
 | `git-workflow.md` | Branch strategy (`development`/`main`), commit message format, pre-push verification, PR workflow |
 | `i18n.md` | Internationalization patterns, translation key conventions, locale handling |
 | `mcp-tools.md` | MCP server usage guide: when to use each server, quick references, common library IDs, rules for each tool |
 | `pages-and-layouts.md` | Next.js App Router page/layout conventions, async params handling, loading states, error boundaries |
 | `patterns.md` | Data fetching with loaders, mutation flow with Server Actions, service pattern, route structure, React Query usage |
-| `pre-implementation-analysis.md` | Pre-code checklist: blast radius, existing patterns, security surface, performance, maintainability, and multi-tenant safety. Scoped to `.ts`/`.tsx` files. |
+| `pre-implementation-analysis.md` | Pre-code checklist: blast radius, existing patterns, security surface, performance, maintainability, and multi-tenant safety |
 | `route-handlers.md` | API route handler conventions, request/response patterns, middleware |
 | `security.md` | RLS enforcement, secret management, authentication, multi-tenant data isolation, OAuth callbacks, security checklist |
 | `testing.md` | Vitest configuration, mock patterns, TDD workflow, component testing, E2E testing approach |
-| `date-formatting.md` | Date parsing safety: YYYY-MM-DD strings must be parsed as local time (not UTC) to avoid off-by-one display bugs |
 | `ui-components.md` | Component library usage, when to use shared components vs custom UI, styling conventions |
+
+### Project-Level Override (project-implementation.md)
+
+Each project can optionally create a `.claude/rules/project-implementation.md` that maps universal patterns to its specific framework. Example from a MakerKit SaaS project:
+
+| Universal Pattern | Framework Override |
+|---|---|
+| `createClient()` from `@/lib/supabase/server` | `getSupabaseServerClient()` from `@kit/supabase/server-client` |
+| Manual Zod + `getSession()` in Server Actions | `enhanceAction` from `@kit/next/actions` (handles both) |
+| `@/components/ui/*` (shadcn) | `@kit/ui/*` (Button, Form, Trans, If, Spinner) |
+| `pnpm test` | `pnpm --filter lighthouse test` |
+
+Projects without a `project-implementation.md` use the user-level rules as-is — they default to standard community patterns (`createClient`, manual auth checks, `@/components/ui`).
 
 ---
 
@@ -760,20 +784,32 @@ Key sections to customize:
 - **Architecture** -- Describe your data flow, auth, and multi-tenant patterns
 - **Verification** -- Add your project's typecheck/lint/test commands
 
-### 2. Fill in Rule Files
+### 2. Create Project-Level Implementation Rule
 
-Several rule files also have `<!-- CUSTOMIZE -->` markers:
+The 15 user-level rules use standard Next.js/Supabase patterns by default. If your project uses a framework with its own utilities (MakerKit, T3, etc.), create a `project-implementation.md` in your project's `.claude/rules/`:
 
 ```bash
-grep -rn "CUSTOMIZE" .claude/rules/
+touch your-project/.claude/rules/project-implementation.md
 ```
 
-Common customizations:
-- `git-workflow.md` -- Your remote URLs, branch names, CI pipeline
-- `database.md` -- Your migration commands, RLS helper functions
-- `security.md` -- Your auth wrapper, specific security requirements
-- `patterns.md` -- Your Server Action wrapper, specific architectural patterns
-- `coding-style.md` -- Your logging utility, framework-specific conventions
+This file maps universal patterns to your framework's specific implementations. Start with a quick reference table:
+
+```markdown
+# MyProject -- Project Implementation Guide
+
+> Framework-specific overrides for the universal rules loaded at user-level.
+
+## Quick Reference -- Framework Overrides
+
+| Universal Pattern | Framework Implementation |
+|---|---|
+| `createClient()` from `@/lib/supabase/server` | Your framework's Supabase helper |
+| Manual Zod + auth in Server Actions | Your framework's action wrapper |
+| `@/components/ui/*` | Your framework's component library |
+| `pnpm test` | Your project's test command |
+```
+
+Then add sections for each area where your framework differs (imports, auth wrappers, component library, monorepo commands, etc.). See the Rules section above for details on how the two-layer system works.
 
 ### 3. Add Custom Rules
 
@@ -924,6 +960,12 @@ Optional Claude Code plugins can enhance the development experience. See [plugin
 ---
 
 ## Research
+
+The `docs/` directory contains research and reference material:
+
+| Document | What It Covers |
+|----------|---------------|
+| [teams-research.md](docs/teams-research.md) | What context teammates actually receive — CLAUDE.md, rules, skills, MCP tools — and how the SubagentStart hook compensates for gaps |
 
 The `docs/research/` directory contains reference material from Anthropic's official documentation that informed the design of this setup. Useful if you want to understand the "why" behind the hooks, skills, and agent patterns.
 

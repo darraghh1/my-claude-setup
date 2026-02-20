@@ -1,10 +1,8 @@
 ---
 name: playwright-e2e
-description: "Write, review, or debug end-to-end tests using Playwright. Use when asked to 'write e2e tests', 'add Playwright tests', 'test this user flow', 'fix flaky tests', 'create a test suite', or 'debug this e2e failure'. Invoke with /playwright-e2e or when user mentions e2e tests, Playwright, or test automation. Do NOT use for live browser interaction via MCP tools — use playwright-mcp for that. Do NOT use for unit/integration tests — use tdd-guide agent instead."
+description: "Write, review, or debug end-to-end tests using Playwright for critical user flows."
 metadata:
   version: 1.0.0
-  category: testing
-  tags: [e2e, playwright, testing, automation]
 ---
 
 # Playwright E2E Testing Expert

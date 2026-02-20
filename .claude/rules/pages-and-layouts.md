@@ -7,9 +7,11 @@ paths:
 
 # Pages, Layouts & Route Patterns
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 ## Creating a New Page
 
-Every page needs: `generateMetadata` and a `loading.tsx`. Missing `loading.tsx` causes the entire page tree to block on data fetching — users see a blank screen instead of a loading indicator.
+Every page needs: `generateMetadata` and a `loading.tsx`. Missing `loading.tsx` causes the entire page tree to block on data fetching -- users see a blank screen instead of a loading indicator.
 
 ### Page Template
 
@@ -43,8 +45,6 @@ export default function Loading() {
   return <div>Loading...</div>;
 }
 ```
-
-<!-- CUSTOMIZE: Replace the loading component with your project's loading spinner/skeleton. -->
 
 ## Layout Patterns
 
@@ -89,9 +89,6 @@ async function TeamLayout({
 export default TeamLayout;
 ```
 
-<!-- CUSTOMIZE: If your framework provides workspace context providers or layout wrappers,
-document them here with the correct import paths. -->
-
 ## Dynamic Route Params (Next.js 15+)
 
 Forgetting to `await params` causes runtime errors that are hard to trace because the error message doesn't mention `params`:
@@ -111,23 +108,22 @@ async function Page({ params }: Params) {
 
 ```
 app/home/
-├── (user)/           # Personal account context
-│   └── settings/
-├── [account]/        # Team account context (slug-based)
-│   ├── _components/
-│   ├── _lib/
-│   │   ├── server/   # Loaders, server actions, services
-│   │   └── schema/   # Zod schemas (singular)
-│   └── my-feature/
-│       ├── page.tsx
-│       └── loading.tsx
+  (user)/           # Personal account context
+    settings/
+  [account]/        # Team account context (slug-based)
+    _components/
+    _lib/
+      server/   # Loaders, server actions, services
+      schema/   # Zod schemas (singular)
+    my-feature/
+      page.tsx
+      loading.tsx
 ```
 
 ## Feature Flags
 
-<!-- CUSTOMIZE: If your project uses feature flags, document them here.
+Common pattern for toggling features:
 
-Common pattern:
 ```typescript
 // config/feature-flags.ts
 export const featureFlags = {
@@ -135,4 +131,3 @@ export const featureFlags = {
   enableNotifications: process.env.NEXT_PUBLIC_ENABLE_NOTIFICATIONS === 'true',
 };
 ```
--->

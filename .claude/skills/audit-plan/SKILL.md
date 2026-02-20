@@ -1,6 +1,6 @@
 ---
 name: audit-plan
-description: "Perform a high-level flow audit of an implementation plan, analyzing phase-to-phase dependencies, data flow consistency, ordering logic, stale artifacts, and risk assessment. Use when asked to 'audit the plan', 'check plan flow', 'review plan dependencies', 'find plan discrepancies', or 'assess plan coherence'. Do NOT use for per-phase template compliance (use /review-plan) or creating plans (use /create-plan)."
+description: "Audit implementation plans for phase-to-phase dependencies, data flow consistency, ordering logic, and stale artifacts. Produces a risk-assessed flow audit report."
 argument-hint: "[plan-folder]"
 context: fork
 agent: general-purpose
@@ -8,8 +8,6 @@ model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(uv run*) TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.2.0
-  category: workflow-automation
-  tags: [planning, audit, dependencies, flow-analysis, quality-assurance]
 ---
 
 <!-- ultrathink: Enable extended thinking for holistic flow analysis -->

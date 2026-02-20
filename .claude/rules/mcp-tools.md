@@ -1,21 +1,19 @@
-# MCP Tools — Prefer Over Manual Alternatives
+# MCP Tools -- Prefer Over Manual Alternatives
 
-MCP server tools are available as **direct tool calls** — just like `Read`, `Grep`, or `Bash`. They are NOT CLI commands. Do NOT run them via `claude mcp call` or any shell command. Call them directly as tools.
+MCP server tools are available as **direct tool calls** -- just like `Read`, `Grep`, or `Bash`. They are NOT CLI commands. Do NOT run them via `claude mcp call` or any shell command. Call them directly as tools.
 
-**CORRECT** — call the tool directly:
+**CORRECT** -- call the tool directly:
 ```
 Tool: mcp__playwright__browser_snapshot
 Parameters: {}
 ```
 
-**WRONG** — do NOT shell out:
+**WRONG** -- do NOT shell out:
 ```
-Bash: claude mcp call playwright browser_snapshot ...  # WRONG — not a CLI command
+Bash: claude mcp call playwright browser_snapshot ...  # WRONG -- not a CLI command
 ```
 
 ## MCP Server Overview
-
-<!-- CUSTOMIZE: Update this table to match your configured MCP servers in .mcp.json -->
 
 | Server | Prefix | Purpose | When to Use Instead of... |
 |--------|--------|---------|--------------------------|
@@ -29,7 +27,7 @@ Bash: claude mcp call playwright browser_snapshot ...  # WRONG — not a CLI com
 
 ## Playwright MCP
 
-For live browser interaction — navigating pages, clicking buttons, filling forms, taking screenshots.
+For live browser interaction -- navigating pages, clicking buttons, filling forms, taking screenshots.
 
 | Key Rule | Why |
 |----------|-----|
@@ -37,7 +35,7 @@ For live browser interaction — navigating pages, clicking buttons, filling for
 | **Prefer snapshot over screenshot** | Structured accessibility tree vs opaque image |
 | **Use `browser_wait_for` for async pages** | Pages may not have rendered yet after navigation |
 
-**Do NOT use for writing Playwright test code** — use the `playwright-e2e` skill instead. This is for live browser control.
+**Do NOT use for writing Playwright test code** -- use the `playwright-e2e` skill instead. This is for live browser control.
 
 ---
 
@@ -61,7 +59,7 @@ For querying up-to-date library and framework documentation.
 | TanStack Query | `/tanstack/query` |
 | Zod | `/colinhacks/zod` |
 
-**Do NOT use for general web search** — use Tavily.
+**Do NOT use for general web search** -- use Tavily.
 
 ---
 
@@ -71,12 +69,12 @@ For web search, content extraction, site crawling, and multi-source research.
 
 | Key Rule | Why |
 |----------|-----|
-| **Start with `tavily_search`** | Low cost, fast — sufficient for most questions |
-| **Use `tavily_research` sparingly** | Very expensive — multi-source synthesis |
+| **Start with `tavily_search`** | Low cost, fast -- sufficient for most questions |
+| **Use `tavily_research` sparingly** | Very expensive -- multi-source synthesis |
 | **Include the year in queries** | "topic 2026" gets current results |
 | **`tavily_map` before `tavily_crawl`** | Understand site structure before extracting content |
 
-**Do NOT use for library docs** — use Context7.
+**Do NOT use for library docs** -- use Context7.
 
 ---
 
@@ -111,8 +109,8 @@ Claude defaults to sequential MCP tool calls even when tools are independent. Fo
 
 ```
 **Run these in parallel** (they are independent):
-- `mcp__context7__searchDocs` → library docs
-- `mcp__tavily__tavily_search` → web results
+- `mcp__context7__searchDocs` -> library docs
+- `mcp__tavily__tavily_search` -> web results
 ```
 
 Independent MCP calls (different servers, no data dependencies) should always run in parallel to reduce latency.
@@ -121,8 +119,8 @@ Independent MCP calls (different servers, no data dependencies) should always ru
 
 ## When NOT to Use MCP Tools
 
-- **Writing SQL/migrations** — use the `postgres-expert` skill instead
-- **Building application code** — use `service-builder`, `server-action-builder`, `react-form-builder`
-- **Reading a specific known file** — `Read` is faster when you already know the exact path
-- **Broad codebase search** — `Grep`/`Glob` are more flexible for arbitrary pattern matching
-- **Writing Playwright test code** — use the `playwright-e2e` skill (not the Playwright MCP server)
+- **Writing SQL/migrations** -- use the `postgres-expert` skill instead
+- **Building application code** -- use `service-builder`, `server-action-builder`, `react-form-builder`
+- **Reading a specific known file** -- `Read` is faster when you already know the exact path
+- **Broad codebase search** -- `Grep`/`Glob` are more flexible for arbitrary pattern matching
+- **Writing Playwright test code** -- use the `playwright-e2e` skill (not the Playwright MCP server)

@@ -1,11 +1,9 @@
 ---
 name: drawio-mcp
-description: "Create, edit, and export draw.io diagrams via the draw.io MCP server with real-time browser preview. Use when asked to 'create a diagram', 'draw a flowchart', 'make an architecture diagram', 'visualise this system', or 'update the diagram'. Do NOT use the desktop app or any CLI — all operations go through MCP tool calls."
+description: "Create, edit, and export draw.io diagrams via the draw.io MCP server with real-time browser preview."
 metadata:
   version: 1.0.0
   mcp-server: drawio
-  category: diagramming
-  tags: [diagrams, drawio, architecture, flowchart, visualisation]
 ---
 
 # Draw.io MCP — Diagram Creation & Editing

@@ -1,13 +1,15 @@
-# Security — Next.js Supabase TypeScript
+# Security -- Next.js Supabase TypeScript
+
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
 
 ## Row Level Security (RLS)
 
-Every table without RLS exposes all its data to any authenticated user — this is the most common way customer data leaks between accounts. RLS enforces data isolation automatically:
+Every table without RLS exposes all its data to any authenticated user -- this is the most common way customer data leaks between accounts. RLS enforces data isolation automatically:
 
 - **Server Components:** RLS enforces access control via the server Supabase client
 - **Server Actions:** RLS validates permissions on mutations
 - **No manual auth checks needed** when using standard Supabase client
-- **Admin client** (service role key): Only for bypassing RLS in rare cases — requires careful manual validation
+- **Admin client** (service role key): Only for bypassing RLS in rare cases -- requires careful manual validation
 
 ```sql
 -- Standard RLS pattern for account-scoped data
@@ -22,7 +24,7 @@ CREATE POLICY "Users can view own account data"
 ## Secret Management
 
 ```typescript
-// Hardcoded secrets get committed to git and leaked — use env vars
+// Hardcoded secrets get committed to git and leaked -- use env vars
 // BAD: const apiKey = "sk-proj-xxxxx";
 
 // GOOD: Environment variables
@@ -41,11 +43,9 @@ if (!apiKey) {
 
 Every Server Action must verify the user is authenticated before processing. See `patterns.md` for the full Server Action pattern.
 
-<!-- CUSTOMIZE: If your framework provides an auth wrapper for Server Actions, document it here. -->
-
 ## Multi-Tenant Data Isolation
 
-Data without `account_id` or proper RLS policies can leak between tenants — this is a critical business risk:
+Data without `account_id` or proper RLS policies can leak between tenants -- this is a critical business risk:
 
 - All data must have an `account_id` foreign key
 - RLS policies use memberships to verify access
@@ -73,9 +73,9 @@ Client Component props are serialized into the HTML response and visible in brow
 
 Each item addresses a vulnerability that commonly causes production incidents:
 
-- [ ] No hardcoded secrets — they persist in git history permanently, even after deletion
-- [ ] All user inputs validated with Zod schemas — unvalidated input enables injection attacks
-- [ ] RLS policies on new tables — missing RLS exposes all rows to any authenticated user
-- [ ] Server-only code has `import 'server-only'` — without it, secrets leak to the browser bundle
-- [ ] Error messages don't leak sensitive data — stack traces and DB errors expose internal architecture
-- [ ] Admin client usage is justified and documented — it bypasses all access controls
+- [ ] No hardcoded secrets -- they persist in git history permanently, even after deletion
+- [ ] All user inputs validated with Zod schemas -- unvalidated input enables injection attacks
+- [ ] RLS policies on new tables -- missing RLS exposes all rows to any authenticated user
+- [ ] Server-only code has `import 'server-only'` -- without it, secrets leak to the browser bundle
+- [ ] Error messages don't leak sensitive data -- stack traces and DB errors expose internal architecture
+- [ ] Admin client usage is justified and documented -- it bypasses all access controls

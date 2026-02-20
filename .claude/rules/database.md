@@ -5,15 +5,17 @@ paths:
   - "**/supabase/**"
 ---
 
-# Database Patterns — Supabase Postgres
+# Database Patterns -- Supabase Postgres
 
 ## Schema Files & Migrations
 
-<!-- CUSTOMIZE: Update paths to match your project structure. -->
+Standard Supabase CLI commands for managing migrations:
 
 - Create migrations: `npx supabase db diff --schema public -f <migration_name>`
 - Apply migrations: `npx supabase db reset`
 - Generate types: `npx supabase gen types typescript --local > types/database.ts`
+
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
 
 ## Type Inference
 
@@ -30,9 +32,9 @@ type InsertAccount = Database['public']['Tables']['accounts']['Insert'];
 
 - Tables: `snake_case`, plural nouns (`accounts`, `subscriptions`)
 - Functions: `snake_case`, verb phrases (`create_team_account`, `verify_nonce`)
-- Explicit schema references (`public.accounts` not `accounts`) — without them, `search_path` changes can silently resolve to wrong schemas
-- `search_path = ''` on all function definitions — without this, functions can access unintended schemas, creating security vulnerabilities
-- `security definer` bypasses the caller's RLS context — using it without justification could expose cross-tenant data. Warn if you use it.
+- Explicit schema references (`public.accounts` not `accounts`) -- without them, `search_path` changes can silently resolve to wrong schemas
+- `search_path = ''` on all function definitions -- without this, functions can access unintended schemas, creating security vulnerabilities
+- `security definer` bypasses the caller's RLS context -- using it without justification could expose cross-tenant data. Warn if you use it.
 
 ## RLS Helper Functions
 
@@ -53,9 +55,6 @@ AS $$
   );
 $$;
 ```
-
-<!-- CUSTOMIZE: Add your project's RLS helper functions here.
-Common helpers include: membership check, role check, permission check, ownership check. -->
 
 ### RLS Policy Patterns
 
@@ -106,7 +105,5 @@ For sensitive operations (account deletion, ownership transfer), use one-time to
 
 ```sql
 -- Functions: create_nonce(), verify_nonce(), revoke_nonce()
--- Pattern: Generate token → send to user → verify on submission → revoke after use
+-- Pattern: Generate token -> send to user -> verify on submission -> revoke after use
 ```
-
-<!-- CUSTOMIZE: If your framework provides OTP components, reference them here. -->

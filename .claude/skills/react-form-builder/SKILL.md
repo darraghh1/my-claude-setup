@@ -1,10 +1,8 @@
 ---
 name: react-form-builder
-description: "Create client-side forms with react-hook-form, shadcn/ui form components, and server action integration for Next.js/Supabase applications. Use when building forms with validation, error handling, and loading states ('create a form', 'build the settings form', 'add form validation', 'wire up the edit form'). Generates complete form components with Zod schemas, toast feedback, and data-test attributes. Do NOT use for server-side logic (use server-action-builder or service-builder), database schemas (use postgres-expert), or E2E tests (use playwright-e2e)."
+description: "Create client-side forms with react-hook-form, shadcn/ui, Zod validation, and server action integration for Next.js applications."
 metadata:
   version: 1.0.0
-  category: code-building
-  tags: [react, form, validation, react-hook-form, ui]
 ---
 
 # React Form Builder Expert

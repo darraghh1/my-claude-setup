@@ -1,12 +1,10 @@
 ---
 name: implement
-description: "Implement phases from a plan. Acts as thin dispatcher: spawns builder agents per phase, validators to verify, handles PASS/FAIL routing. Builders are ephemeral — each phase gets a fresh builder with clean context. Use when ready to implement ('implement the next phase', 'start building', 'run the implementation'). Do NOT use for creating plans (use /create-plan) or reviewing plans (use /review-plan)."
+description: "Execute phases from a plan. Spawns ephemeral builder/validator agents per phase, handles gate checks, PASS/FAIL routing, and batch concurrency."
 argument-hint: "[plan-folder]"
 disable-model-invocation: true
 metadata:
   version: 3.0.0
-  category: workflow-automation
-  tags: [implementation, orchestration, team-dispatch]
 ---
 
 # Implement Plan
@@ -186,6 +184,8 @@ TeamCreate({
 
 Spawn a fresh builder for each unblocked phase that passed gate-checking. **Max 2 builders per batch.** If more than 2 phases are unblocked, pick the first 2 (lowest phase numbers) and queue the rest for the next batch.
 
+**Before spawning, extract the `skill:` field from each phase's YAML frontmatter.** You already read the phase during gate-checking (Step 4) — use that value. If the frontmatter has no `skill:` field, use `none`.
+
 ```
 // Spawn builders for unblocked phases (max 2 per batch):
 Task({
@@ -197,10 +197,11 @@ Task({
   mode: "bypassPermissions",
   prompt: `Implement the phase at: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
+Skill: {skill-from-frontmatter}
 
 Follow your preloaded builder-workflow skill. It teaches you how to:
 1. Read the phase and extract requirements
-2. Find reference files and invoke domain skills
+2. Invoke the Skill above (if not "none") and find reference files
 3. Create internal tasks (TaskCreate) for each step — prefix with [Step]. This is REQUIRED for context compact recovery
 4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
 5. Run tests and typecheck
@@ -215,11 +216,13 @@ Task({
   subagent_type: "builder",
   ...same structure...,
   name: "builder-2",
-  prompt: `Implement the phase at: $ARGUMENTS/phase-{MM}-{slug}.md ...`
+  prompt: `Implement the phase at: $ARGUMENTS/phase-{MM}-{slug}.md
+Skill: {skill-from-frontmatter}
+...`
 })
 ```
 
-Each builder gets a fresh context, a unique name (`builder-1`, `builder-2`, etc.), and works independently. The `builder-workflow` skill is preloaded via the builder agent's `skills:` field.
+Each builder gets a fresh context, a unique name (`builder-1`, `builder-2`, etc.), and works independently. The `builder-workflow` skill is preloaded via the builder agent's `skills:` field. The `Skill:` line bridges the orchestrator's knowledge (phase frontmatter) to the builder's skill invocation logic — without it, the builder must discover the skill indirectly from the phase file.
 
 If only one phase is unblocked, spawn a single builder — this is the common case for phases with sequential dependencies.
 

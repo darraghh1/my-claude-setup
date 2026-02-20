@@ -9,11 +9,13 @@ paths:
 
 Forms use `react-hook-form` + `zodResolver` + Server Actions. Custom form handling bypasses the shared validation pipeline, creating inconsistent error messages and missing loading states.
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 ## Anti-Patterns
 
 | Avoid | Why | Do Instead |
 |-------|-----|-----------|
-| `useForm<MyType>(...)` with generic | Breaks type inference from Zod | `useForm({ resolver: zodResolver(Schema) })` — types inferred |
+| `useForm<MyType>(...)` with generic | Breaks type inference from Zod | `useForm({ resolver: zodResolver(Schema) })` -- types inferred |
 | Custom form handling | Bypasses shared validation pipeline | Use your component library's form components |
 | `onSubmit` without `useTransition` | No pending/loading state | Wrap in `startTransition` |
 
@@ -54,8 +56,6 @@ export async function createNoteAction(formData: FormData) {
 }
 ```
 
-<!-- CUSTOMIZE: If your framework provides a Server Action wrapper, use it instead of manual auth + validation. -->
-
 ### 3. Form Component (`_components/create-note-form.tsx`)
 
 ```tsx
@@ -66,13 +66,20 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
+import {
+  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+
 import { CreateNoteSchema } from '../_lib/schema/create-note.schema';
 import { createNoteAction } from '../_lib/server/server-actions';
 
 export function CreateNoteForm() {
   const [pending, startTransition] = useTransition();
 
-  // Never add generics to useForm — let zodResolver infer types
+  // Never add generics to useForm -- let zodResolver infer types
   const form = useForm({
     resolver: zodResolver(CreateNoteSchema),
     defaultValues: { title: '', content: '' },
@@ -92,25 +99,33 @@ export function CreateNoteForm() {
 
   return (
     <form onSubmit={onSubmit}>
-      {/* Use your component library's form fields here */}
-      <input {...form.register('title')} placeholder="Title" />
-      {form.formState.errors.title && (
-        <span>{form.formState.errors.title.message}</span>
-      )}
+      <Form {...form}>
+        <FormField name="title" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Title</FormLabel>
+            <FormControl>
+              <Input placeholder="Title" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <textarea {...form.register('content')} placeholder="Content" />
-      {form.formState.errors.content && (
-        <span>{form.formState.errors.content.message}</span>
-      )}
+        <FormField name="content" render={({ field }) => (
+          <FormItem>
+            <FormLabel>Content</FormLabel>
+            <FormControl>
+              <Textarea placeholder="Content" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )} />
 
-      <button disabled={pending} type="submit">Submit</button>
+        <Button disabled={pending} type="submit">Submit</Button>
+      </Form>
     </form>
   );
 }
 ```
-
-<!-- CUSTOMIZE: Replace the raw HTML form fields with your component library's Form components
-(e.g., shadcn/ui Form, FormField, FormItem, FormLabel, FormControl, FormMessage). -->
 
 ## Naming Conventions
 

@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Review code for quality, security, and project pattern compliance, then auto-fix Critical/High issues. Use after implementing a phase, completing a feature, or modifying existing code ('review this code', 'check my implementation', 'audit this PR', 'review phase 5'). Checks TypeScript strictness, RLS policies, Server Action auth patterns, and component library compliance. Grounds every finding in actual codebase reference files. Do NOT use for creating plans (use create-plan), implementing features (use implement), or writing tests (use implement with TDD)."
+description: "Review code for quality, security, and pattern compliance, then auto-fix Critical/High issues. Grounds every finding in actual codebase reference files."
 argument-hint: "[path-to-phase-file]"
 context: fork
 agent: general-purpose
@@ -8,8 +8,6 @@ model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(git diff*) Bash(git log*) Bash(git show*) Task TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.2.0
-  category: code-quality
-  tags: [review, security, compliance, auto-fix]
 ---
 
 <!-- ultrathink: Enable extended thinking for deep code analysis -->

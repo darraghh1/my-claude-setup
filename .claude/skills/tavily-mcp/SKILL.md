@@ -1,11 +1,9 @@
 ---
 name: tavily-mcp
-description: "Search the web, extract page content, crawl sites, and conduct multi-source research via the Tavily MCP server. Use when user asks 'search for X', 'what's the latest on Y?', 'research this topic', 'extract content from this URL', 'crawl this website', 'map this site structure', or needs current web information, competitor analysis, or multi-source research. Do NOT use for library/framework documentation (use context7-mcp instead)."
+description: "Web search, content extraction, site crawling, and multi-source research via the Tavily MCP server."
 metadata:
   version: 1.0.0
   mcp-server: tavily
-  category: web-research
-  tags: [search, web, research, extraction, crawling]
 ---
 
 # Tavily Web Search & Research

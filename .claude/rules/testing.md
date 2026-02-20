@@ -4,7 +4,7 @@ paths:
   - "**/vitest.*.ts"
 ---
 
-# Testing — Next.js Supabase TypeScript
+# Testing -- Next.js Supabase TypeScript
 
 ## Framework
 
@@ -13,17 +13,15 @@ paths:
 
 ## Test Location
 
-<!-- CUSTOMIZE: Update to match your test directory structure. -->
-
 Tests go in `__tests__/{feature}/` directories:
 
 ```
 __tests__/
-├── auth/                    # Auth feature tests
-│   └── login.test.ts
-├── dashboard/               # Dashboard tests
-│   └── dashboard.test.tsx
-└── helpers/                  # Shared test utilities
+  auth/                    # Auth feature tests
+    login.test.ts
+  dashboard/               # Dashboard tests
+    dashboard.test.tsx
+  helpers/                  # Shared test utilities
 ```
 
 ## Component Tests
@@ -64,12 +62,11 @@ const mockChain = {
 
 ## Running Tests
 
-<!-- CUSTOMIZE: Update commands to match your project setup. -->
-
 ```bash
-npm test                               # All tests
-npm run test:watch                     # Interactive test watcher
-npm run test:coverage                  # Test with coverage report
+pnpm test                               # All tests
+pnpm run test:watch                     # Interactive test watcher
+pnpm run test:coverage                  # Test with coverage report
+pnpm run typecheck                      # TypeScript check
 ```
 
 ## Radix UI in Tests
@@ -82,4 +79,4 @@ Element.prototype.setPointerCapture = () => {};
 Element.prototype.releasePointerCapture = () => {};
 ```
 
-Radix renders text in trigger AND dropdown — use `getAllByText` not `getByText`.
+Radix renders text in trigger AND dropdown -- use `getAllByText` not `getByText`.

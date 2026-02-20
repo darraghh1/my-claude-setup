@@ -1,6 +1,6 @@
 ---
 name: customize
-description: "Onboarding wizard that customizes this Claude Code setup for your specific project. Collects project details through a structured intake questionnaire, then fills all CUSTOMIZE markers across CLAUDE.md and rule files automatically. Use when first adopting this setup for a new project ('customize this setup', 'configure for my project', 'fill in the CUSTOMIZE markers', 'onboard this setup'). Do NOT use for modifying hooks, agents, or other skills -- this only fills CUSTOMIZE markers in CLAUDE.md and rule files."
+description: "Onboarding wizard that collects project details and fills all CUSTOMIZE markers across CLAUDE.md and rule files automatically."
 argument-hint: "[optional: project-name]"
 disable-model-invocation: true
 context: fork
@@ -8,8 +8,6 @@ agent: general-purpose
 allowed-tools: "Read Write Edit Glob Grep Bash(grep*) AskUserQuestion TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.0.0
-  category: setup
-  tags: [onboarding, customization, configuration, setup-wizard]
 ---
 
 # Customize Setup for Your Project

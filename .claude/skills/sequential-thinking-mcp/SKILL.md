@@ -1,11 +1,9 @@
 ---
 name: sequential-thinking-mcp
-description: "Structured multi-step reasoning via the Sequential Thinking MCP server. Use when asked to 'debug this complex bug', 'help me decide between X and Y', 'analyze this tricky problem', 'think through this step by step', 'what's causing this intermittent failure', or 'compare these architectural approaches'. Also triggers on complex debugging with multiple possible causes, architectural decisions with competing trade-offs, multi-step analysis where earlier conclusions might need revision, or root cause analysis of tricky bugs. Do NOT use for simple questions, straightforward tasks, or problems with obvious solutions. Do NOT use as a substitute for just thinking through a problem."
+description: "Structured multi-step reasoning via Sequential Thinking MCP. Use for complex debugging, architectural trade-offs, or root cause analysis."
 metadata:
   version: 1.0.0
   mcp-server: sequential-thinking
-  category: reasoning
-  tags: [reasoning, analysis, debugging, architecture, decision-making]
 ---
 
 # Sequential Thinking — Structured Reasoning

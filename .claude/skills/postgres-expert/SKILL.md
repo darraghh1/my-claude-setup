@@ -1,10 +1,8 @@
 ---
 name: postgres-expert
-description: "Create, review, optimize, or test PostgreSQL and Supabase database code including schemas, migrations, functions, triggers, RLS policies, and PgTAP tests. Use when asked to 'create a migration', 'write RLS policies', 'design the schema', 'add a table', 'review this SQL', 'optimize this query', or 'write database tests'. Invoke with /postgres-expert or when user mentions database, SQL, migrations, RLS, or schema design. Do NOT use for application code, forms, UI, server actions, or service layer logic — use service-builder, server-action-builder, or react-form-builder instead."
+description: "Create, review, and optimise PostgreSQL schemas, migrations, RLS policies, functions, and PgTAP tests for Supabase applications."
 metadata:
   version: 1.0.0
-  category: database
-  tags: [postgres, supabase, sql, rls, migrations]
 ---
 
 # PostgreSQL & Supabase Database Expert

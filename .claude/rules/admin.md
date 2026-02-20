@@ -5,11 +5,13 @@ paths:
 
 # Admin Section
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 ## Security Context
 
 Admin pages have elevated database access that bypasses RLS. A single oversight here exposes the entire database to unauthorized access:
 
-- Pages without admin guards are accessible to any authenticated user — wrap all admin pages with an admin check
+- Pages without admin guards are accessible to any authenticated user -- wrap all admin pages with an admin check
 - The admin client (service role) bypasses all RLS policies. Verify admin status server-side before using it.
 - Client-side admin checks can be bypassed by modifying JavaScript in the browser. Only server-side validation is reliable.
 - Admin operations without audit logging make security incidents untraceable. Log all admin actions.
@@ -42,15 +44,14 @@ async function adminOperation() {
 }
 ```
 
-<!-- CUSTOMIZE: Replace the admin check with your project's admin verification pattern.
-Common patterns: super_admin flag on profile, admin role in memberships, separate admin table. -->
-
 ## Admin Server Actions
 
 Admin mutations must verify admin status before processing:
 
 ```typescript
 'use server';
+
+import { getSession } from '@/lib/auth';
 
 export async function banUserAction(formData: FormData) {
   const session = await getSession();

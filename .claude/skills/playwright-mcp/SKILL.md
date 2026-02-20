@@ -1,11 +1,9 @@
 ---
 name: playwright-mcp
-description: "Interact with web pages via the Playwright MCP browser automation tools. Use when user asks to 'open a page', 'click a button', 'fill out a form', 'take a screenshot', 'check what's on this page', 'navigate to URL', 'inspect the UI', or 'debug the browser'. Provides live browser control for form filling, navigation, visual testing, and debugging. Do NOT use for writing Playwright test code (use playwright-e2e skill instead). Do NOT use for general web search (use tavily-mcp instead)."
+description: "Live browser interaction via Playwright MCP — navigate pages, click buttons, fill forms, take screenshots."
 metadata:
   version: 1.0.0
   mcp-server: playwright
-  category: browser-automation
-  tags: [playwright, browser, automation, testing, screenshots]
 ---
 
 # Playwright MCP Browser Automation

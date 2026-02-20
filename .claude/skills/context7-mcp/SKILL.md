@@ -1,11 +1,9 @@
 ---
 name: context7-mcp
-description: "Query up-to-date library and framework documentation via the Context7 MCP server. Use when user asks 'how does X work in Next.js?', 'show me the React docs for Y', 'what's the API for Supabase Z?', 'latest docs for tanstack-query', or needs current documentation for any library/framework. Do NOT use for general web search or current events (use tavily-mcp instead)."
+description: "Query up-to-date library and framework documentation via the Context7 MCP server."
 metadata:
   version: 1.0.0
   mcp-server: context7
-  category: documentation
-  tags: [docs, documentation, libraries, frameworks, api-reference]
 ---
 
 # Context7 Library Documentation

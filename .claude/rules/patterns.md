@@ -4,9 +4,11 @@ paths:
   - "**/*.tsx"
 ---
 
-# Patterns — Next.js Supabase TypeScript
+# Patterns -- Next.js Supabase TypeScript
 
 Consistent patterns across the codebase make code easier for future developers (and Claude) to navigate.
+
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
 
 ## Data Fetching: Server Components with Loaders
 
@@ -67,9 +69,6 @@ export async function createProjectAction(formData: FormData) {
 }
 ```
 
-<!-- CUSTOMIZE: If your framework provides a Server Action wrapper that handles auth + validation,
-use it consistently instead of manual checks. -->
-
 ## Service Pattern
 
 Private class + factory function enables dependency injection for testing while keeping class internals hidden:
@@ -101,9 +100,6 @@ export function createProjectsService(client: SupabaseClient<Database>) {
 
 ## Supabase Client Selection
 
-<!-- CUSTOMIZE: Update import paths to match your Supabase client setup.
-If using @supabase/ssr, typical pattern is createClient() for server and createBrowserClient() for client. -->
-
 | Context | Client | Import |
 |---------|--------|--------|
 | Server Components, Actions, Route Handlers | `createClient()` | `@/lib/supabase/server` |
@@ -114,21 +110,19 @@ If using @supabase/ssr, typical pattern is createClient() for server and createB
 
 ```
 app/home/[account]/
-├── feature/
-│   ├── page.tsx                    # Server Component page
-│   ├── _components/                # Feature-specific UI
-│   │   └── feature-list.tsx
-│   └── _lib/
-│       ├── server/                 # Server-side logic
-│       │   ├── feature-page.loader.ts
-│       │   └── server-actions.ts
-│       └── schema/                 # Zod validation (singular)
-│           └── feature.schema.ts
+  feature/
+    page.tsx                    # Server Component page
+    _components/                # Feature-specific UI
+      feature-list.tsx
+    _lib/
+      server/                 # Server-side logic
+        feature-page.loader.ts
+        server-actions.ts
+      schema/                 # Zod validation (singular)
+        feature.schema.ts
 ```
 
 ## Multi-Tenant Account Model
-
-<!-- CUSTOMIZE: Adjust to match your auth/account model. Remove if not multi-tenant. -->
 
 - **Personal Accounts:** User's own workspace
 - **Team Accounts:** Shared workspaces with members via memberships table

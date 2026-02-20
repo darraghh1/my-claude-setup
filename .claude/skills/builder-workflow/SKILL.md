@@ -4,8 +4,6 @@ description: "Phase-level implementation workflow for builder agents. Handles re
 user-invocable: false
 metadata:
   version: 1.0.0
-  category: workflow-automation
-  tags: [implementation, building, phase-execution]
 ---
 
 # Builder Phase Workflow
@@ -59,9 +57,9 @@ pnpm test
   - Previous phase failures: fix them first, re-run to confirm green
   - Current phase TDD failures: expected, proceed
 
-## Step 3: Identify Domain Skill and Reference
+## Step 3: Invoke Domain Skill and Find Reference
 
-Check the phase frontmatter for a `skill` field, or determine from content:
+Your spawn prompt includes a `Skill:` field (extracted from the phase frontmatter by the orchestrator). If present, use that value. Otherwise, check the phase frontmatter for a `skill` field, or determine from content:
 
 | Phase Focus | Skill | Reference Glob |
 |-------------|-------|---------------|

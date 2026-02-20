@@ -4,7 +4,7 @@ paths:
   - "**/*.tsx"
 ---
 
-# Coding Style — Next.js Supabase TypeScript
+# Coding Style -- Next.js Supabase TypeScript
 
 ## Immutability
 
@@ -20,12 +20,12 @@ return { ...user, name };
 
 ## Error Handling & Structured Logging
 
-`console.error` in production breaks structured logging and makes debugging impossible. Use a proper logger (e.g., Pino, Winston, or your framework's logging utility) for production observability.
+`console.error` in production breaks structured logging and makes debugging impossible. Use a proper logger for production observability.
 
 Always include a context object with a meaningful `name` and relevant IDs:
 
 ```typescript
-import { logger } from '@/lib/logger'; // Your logging utility
+import { logger } from '@/lib/logger';
 
 const ctx = {
   name: 'notes.create',    // meaningful domain name
@@ -49,16 +49,16 @@ try {
 
 Every Server Action must validate inputs with Zod and verify authentication. See `patterns.md` for the full example pattern.
 
+> If your project has a `project-implementation.md` rule, check it for framework-specific overrides.
+
 Naming conventions:
 - File: always name `server-actions.ts`
 - Exports: always suffix with `Action` (e.g., `createNoteAction`)
 - Schema: in a separate `_lib/schema/` file for reuse with `react-hook-form`
 
-<!-- CUSTOMIZE: If your framework provides a Server Action wrapper, document it here. -->
-
 ## Server-Only Code
 
-Without `import 'server-only'`, server files can accidentally get bundled into the client — leaking API keys, database credentials, and internal logic to the browser:
+Without `import 'server-only'`, server files can accidentally get bundled into the client -- leaking API keys, database credentials, and internal logic to the browser:
 
 ```typescript
 import 'server-only';
@@ -108,7 +108,7 @@ import { MyComponent } from './_components/my-component';
 
 ## React
 
-- `useEffect` is a code smell — must be justified, avoid if possible
+- `useEffect` is a code smell -- must be justified, avoid if possible
 - Prefer single state object over multiple `useState` calls (unless independent)
 - Prefer server-side data fetching with RSC over client-side fetching
 - Display loading indicators where appropriate

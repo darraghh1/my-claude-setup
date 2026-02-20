@@ -1,6 +1,6 @@
 ---
 name: dev
-description: "General-purpose development workflow for ad-hoc tasks outside of plans. Routes to the right domain skills (postgres-expert, server-action-builder, react-form-builder, service-builder, playwright-e2e), enforces task tracking, and follows a reference-grounded build-test-verify loop. Use when asked to 'build this', 'add this feature', 'fix this bug', 'create this component', 'wire up this form', or any implementation task not tied to a plan. Do NOT use for plan-based work (use /implement), creating plans (use /create-plan), or reviews (use /code-review, /review-plan)."
+description: "Ad-hoc development workflow. Routes to domain skills (postgres-expert, server-action-builder, react-form-builder, service-builder, playwright-e2e), enforces task tracking, and follows a reference-grounded build-test-verify loop."
 argument-hint: "[task description]"
 context: fork
 agent: general-purpose
@@ -8,8 +8,6 @@ model: sonnet
 allowed-tools: "Read Write Edit Grep Glob Bash Skill Task TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.0.0
-  category: workflow-automation
-  tags: [implementation, development, skill-routing, ad-hoc]
 ---
 
 <!-- ultrathink: Enable extended thinking for implementation work -->

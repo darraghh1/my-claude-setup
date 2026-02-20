@@ -1,10 +1,8 @@
 ---
 name: service-builder
-description: "Build pure, interface-agnostic services with injected dependencies for Next.js/Supabase applications. Use when creating business logic, CRUD services, or data access layers ('create a service', 'build the project service', 'add a delete method', 'write the data access layer'). Services work across server actions, MCP tools, CLI commands, and tests. Do NOT use for server actions (use server-action-builder), forms (use react-form-builder), or database schemas (use postgres-expert)."
+description: "Build pure, interface-agnostic services with injected dependencies for Next.js/Supabase applications."
 metadata:
   version: 1.0.0
-  category: code-building
-  tags: [service, business-logic, dependency-injection, testing]
 ---
 
 # Service Builder
