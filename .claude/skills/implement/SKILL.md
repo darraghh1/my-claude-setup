@@ -162,14 +162,32 @@ TeamCreate({
 })
 ```
 
-**Validators are spawned on-demand per phase** (see Step 7). Unlike the builder (spawned here in Step 6), validators are created when a builder reports completion. This eliminates the single-validator bottleneck — when multiple builders finish in parallel, each gets its own validator reviewing concurrently.
+**Validators are spawned on-demand per phase** (see Step 7). Unlike builders (spawned here in Step 6), validators are created when a builder reports completion. Each builder in a batch gets its own validator — max 2 validators active at a time, respecting the 4-agent total cap (see Concurrency Limits).
+
+## Concurrency Limits
+
+**Hard cap: 4 total active agents (builders + validators combined).** Exceeding this overwhelms the orchestrator's context with simultaneous completion messages and can crash the session.
+
+| Constraint | Limit | Why |
+|-----------|-------|-----|
+| Builders per batch | Max 2 | Context pressure from parallel completions |
+| Validators per batch | Max 2 (one per active builder) | Each builder gets one validator |
+| **Total active agents** | **Max 4** | Orchestrator context budget |
+| Batch overlap | **None** | Wait for current batch to fully complete before spawning next |
+
+**Batch processing model:**
+1. Spawn up to 2 builders for unblocked phases (a "batch")
+2. As each builder completes, spawn its validator (max 2 validators active)
+3. Wait for ALL builders AND validators in the current batch to finish
+4. Only then loop back to Step 3 to find newly unblocked phases and spawn the next batch
+5. Do NOT fill "open slots" mid-batch — the batch completes as a unit
 
 ## Step 6: Spawn Builders
 
-Spawn a fresh builder for each unblocked phase that passed gate-checking. **Use parallel Task calls** to launch multiple builders concurrently — max 2-3 at a time to avoid context pressure from simultaneous completion messages.
+Spawn a fresh builder for each unblocked phase that passed gate-checking. **Max 2 builders per batch.** If more than 2 phases are unblocked, pick the first 2 (lowest phase numbers) and queue the rest for the next batch.
 
 ```
-// Spawn builders for ALL unblocked phases in parallel:
+// Spawn builders for unblocked phases (max 2 per batch):
 Task({
   description: "Implement phase {NN}",
   subagent_type: "builder",
@@ -191,6 +209,7 @@ Follow your preloaded builder-workflow skill. It teaches you how to:
 IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
 })
 
+// Only if a second phase is unblocked:
 Task({
   description: "Implement phase {MM}",
   subagent_type: "builder",
@@ -210,7 +229,7 @@ Wait for builder completion messages (automatic delivery — do NOT poll). When 
 
 When a builder reports done:
 
-1. **Spawn a fresh validator for this phase:**
+1. **Spawn a fresh validator for this phase** (max 2 validators active, one per builder in the batch):
 
 ```
 Task({
@@ -228,11 +247,11 @@ Run /code-review against the phase file, then verify with typecheck + tests. Rep
 })
 ```
 
-Each validator gets a unique name matching its builder (`validator-1` for `builder-1`, `validator-2` for `builder-2`, etc.). **Multiple validators can run concurrently** — do NOT wait for one validator to finish before spawning another.
+Each validator gets a unique name matching its builder (`validator-1` for `builder-1`, `validator-2` for `builder-2`, etc.).
 
-2. **Continue processing other builder completions** as they arrive. If another builder completes while a validator is already running, spawn another validator immediately.
+2. **Continue processing other builder completions** as they arrive within this batch. If a second builder completes while the first validator is running, spawn the second validator immediately (staying within the 4-agent total cap).
 
-3. **Wait for validator verdicts.** Each validator runs comprehensive code review (reference-grounded, with auto-fix) and verification independently. This is the independent review — the builder never reviewed its own code.
+3. **Wait for ALL validator verdicts in this batch before proceeding.** Do NOT spawn new builders while validators are still running. The batch completes as a unit: all builders done → all validators done → then Step 8 → then next batch.
 
 ## Step 8: Handle Verdict
 
@@ -243,8 +262,8 @@ Each validator gets a unique name matching its builder (`validator-1` for `build
 4. Shutdown the builder and validator for this phase:
    - `SendMessage({ type: "shutdown_request", recipient: "builder-N" })`
    - `SendMessage({ type: "shutdown_request", recipient: "validator-N" })`
-5. If other builders/validators are still active, continue waiting for their completions (Step 7)
-6. When all active builders are done, loop back to Step 3 — newly completed phases may unblock additional pending phases
+5. If other builders/validators in this batch are still active, continue waiting for their completions (Step 7)
+6. **When the entire batch is complete** (all builders done, all validators done, all verdicts processed), loop back to Step 3 — newly completed phases may unblock additional pending phases. Do NOT spawn new builders mid-batch.
 
 **FAIL:**
 1. Shutdown the current builder AND validator (both contexts may be stale):

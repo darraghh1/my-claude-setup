@@ -20,7 +20,8 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 - [Directory Structure](#directory-structure)
 - [Hooks](#hooks)
   - [Hook Summary](#hook-summary)
-  - [TypeScript Validator](#typescript-validator)
+  - [TypeScript Quality Checks](#typescript-quality-checks)
+  - [Project-Specific TypeScript Validator](#project-specific-typescript-validator)
   - [Blocked Commands](#blocked-commands)
   - [Additional Validators](#additional-validators)
 - [Skills](#skills)
@@ -53,10 +54,10 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 17 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
+| **Skills** | 23 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
 | **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
-| **Rules** | 14 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
+| **Rules** | 15 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
 ---
 
@@ -94,9 +95,18 @@ The `/implement` skill acts as a **thin dispatcher** that coordinates a team of 
 | **Builder** | One phase (ephemeral) | Full phase implementation — reads phase file, finds references, invokes domain skills, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
 | **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
 
-**Why both are ephemeral:** Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3), ensures skill instructions are never compacted away, and eliminates the single-validator bottleneck when multiple builders run in parallel.
+**Why both are ephemeral:** Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
 
-The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Independent phases (`dependencies: []`, or all dependencies already "Done") are spawned as parallel builders — up to 2-3 at a time, each with its own clean context. As phases complete, the orchestrator re-scans for newly unblocked phases.
+The orchestrator uses a **batch processing model** with strict concurrency limits:
+
+| Constraint | Limit | Why |
+|-----------|-------|-----|
+| Builders per batch | Max 2 | Context pressure from parallel completions |
+| Validators per batch | Max 2 (one per builder) | Each builder gets one validator |
+| **Total active agents** | **Max 4** | Orchestrator context budget |
+| Batch overlap | **None** | Wait for current batch to fully complete before spawning next |
+
+The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Up to 2 unblocked phases are spawned as parallel builders (a "batch"), each with its own clean context. As each builder completes, a validator is spawned for its phase. The entire batch must finish — all builders done, all validators done, all verdicts processed — before the orchestrator loops back to find newly unblocked phases. No new builders are spawned mid-batch.
 
 ### Quality Gates
 
@@ -104,10 +114,12 @@ Quality is enforced at four layers during each phase, in order:
 
 | Layer | When | What Runs | Catches |
 |-------|------|-----------|---------|
-| **PostToolUse hook** | Every Write/Edit on TS files | `typescript_validator.py` | `any` types, missing `'use server'` directives, `console.log` in production code |
+| **Global PostToolUse hook** | Every Write/Edit on TS files | `post_tool_use.py` (7 regex checks) | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse |
 | **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` | Test failures, type errors |
 | **Validator `/code-review`** | After builder reports done | 451-line checklist, codebase-grounded, auto-fix (independent agent) | Pattern deviations, security issues, missing auth checks |
 | **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` | Issues introduced by auto-fixes |
+
+The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification.
 
 Both `/review-plan` (planning phase) and `/code-review` (implementation phase) are **codebase-grounded** — they read actual files from your project before flagging issues, so findings are specific to your codebase rather than generic advice.
 
@@ -145,19 +157,40 @@ If a `/dev` task turns out to be too large (10+ files, multiple domains), it rec
 
 ## Quick Start
 
-1. **Copy the configuration files into your project root:**
+### Option A: Symlink to User-Level (Recommended)
+
+This makes skills, agents, and rules available globally across all projects via symlinks from `~/.claude/` to this repo. Edit files in one place, every project benefits.
 
 ```bash
-cp -r .claude/ your-project/.claude/
-cp .mcp.json your-project/.mcp.json
-cp CLAUDE.md your-project/CLAUDE.md
+# Clone the repo
+git clone https://github.com/your-org/my-claude-setup.git ~/Projects/my-claude-setup
+
+# Symlink skills, agents, and rules to user-level
+ln -sf ~/Projects/my-claude-setup/.claude/skills ~/.claude/skills
+ln -sf ~/Projects/my-claude-setup/.claude/agents ~/.claude/agents
+ln -sf ~/Projects/my-claude-setup/.claude/rules ~/.claude/rules
+
+# Copy hooks into each project (hooks stay project-level — they run project-specific validators)
+cp -r ~/Projects/my-claude-setup/.claude/hooks your-project/.claude/hooks
+cp ~/Projects/my-claude-setup/.claude/settings.json your-project/.claude/settings.json
+cp ~/Projects/my-claude-setup/CLAUDE.md your-project/CLAUDE.md
 ```
 
-2. **Add API keys to `.mcp.json`:**
+Add MCP servers to your user-level config (`~/.claude.json`):
 
 ```json
 {
   "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"],
+      "env": {}
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "env": {}
+    },
     "context7": {
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp", "--api-key", "YOUR_CONTEXT7_API_KEY"]
@@ -165,17 +198,32 @@ cp CLAUDE.md your-project/CLAUDE.md
     "tavily": {
       "command": "npx",
       "args": ["-y", "tavily-mcp@latest"],
-      "env": {
-        "TAVILY_API_KEY": "YOUR_TAVILY_API_KEY"
-      }
+      "env": { "TAVILY_API_KEY": "YOUR_TAVILY_API_KEY" }
+    },
+    "drawio": {
+      "command": "npx",
+      "args": ["-y", "@next-ai-drawio/mcp-server@latest"]
     }
   }
 }
 ```
 
-3. **Run `/customize` to fill in project-specific details.** This onboarding wizard collects your project info (name, commands, architecture, component library, etc.) and fills all `<!-- CUSTOMIZE -->` markers across CLAUDE.md and rule files automatically. Or search for markers manually with `grep -rn "CUSTOMIZE" CLAUDE.md .claude/rules/`.
+### Option B: Copy Per-Project
 
-4. **Start Claude Code** in your project directory. The hooks, skills, and rules load automatically.
+Copy everything into each project individually. Simpler setup, but updates must be applied to every project.
+
+```bash
+cp -r .claude/ your-project/.claude/
+cp .mcp.json.example your-project/.mcp.json
+cp CLAUDE.md your-project/CLAUDE.md
+# Edit your-project/.mcp.json and add your API keys
+```
+
+### After Either Option
+
+1. **Run `/customize`** to fill in project-specific details. This onboarding wizard collects your project info (name, commands, architecture, component library, etc.) and fills all `<!-- CUSTOMIZE -->` markers across CLAUDE.md and rule files automatically. Or search for markers manually with `grep -rn "CUSTOMIZE" CLAUDE.md .claude/rules/`.
+
+2. **Start Claude Code** in your project directory. The hooks, skills, and rules load automatically.
 
 ---
 
@@ -225,15 +273,16 @@ Optional:
 │   │   ├── constants.py            # Shared paths and log directory helpers
 │   │   └── notify.py               # Sound notification via HTTP (optional)
 │   └── validators/
-│       ├── typescript_validator.py  # Regex-based TS/React quality checks
+│       ├── typescript_validator.py  # Project-specific TS pattern checks (customisation template, not active by default)
 │       ├── validate_file_contains.py    # Checks files contain required sections
 │       ├── validate_new_file.py         # Checks a new file was created
 │       ├── validate_no_placeholders.py  # Detects placeholder/skeleton content
 │       └── validate_tdd_tasks.py        # Enforces TDD task ordering in plans
-├── rules/                          # 14 rule files
+├── rules/                          # 15 rule files
 │   ├── admin.md                    # Admin operations guidelines
 │   ├── coding-style.md             # TypeScript/React coding standards
 │   ├── database.md                 # Supabase/Postgres patterns and RLS
+│   ├── date-formatting.md          # Date parsing (YYYY-MM-DD as local time, not UTC)
 │   ├── forms.md                    # Form handling with react-hook-form + Zod
 │   ├── git-workflow.md             # Branch strategy and commit conventions
 │   ├── i18n.md                     # Internationalization patterns
@@ -245,7 +294,7 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 19 skill directories (each with SKILL.md)
+├── skills/                         # 23 skill directories (each with SKILL.md)
 │   ├── audit-plan/
 │   ├── code-review/
 │   ├── context7-mcp/
@@ -263,7 +312,11 @@ Optional:
 │   ├── sequential-thinking-mcp/
 │   ├── server-action-builder/
 │   ├── service-builder/
-│   └── tavily-mcp/
+│   ├── tavily-mcp/
+│   ├── vercel-composition-patterns/
+│   ├── vercel-react-best-practices/
+│   ├── vercel-react-native-skills/
+│   └── web-design-guidelines/
 ├── settings.json                   # Hook configuration and environment
 ├── settings.local.json             # Local overrides (output style, spinner)
 └── statusline-command.py           # Status bar: model, context, usage, tasks, agents, git
@@ -271,7 +324,7 @@ Optional:
 docs/
 └── research/                       # 9 Anthropic reference documents (see Research section)
 
-.mcp.json                           # MCP server definitions
+.mcp.json.example                   # Example MCP server definitions (copy and add API keys)
 CLAUDE.md                           # Main project instructions
 ```
 
@@ -299,7 +352,7 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 
 ### TypeScript Quality Checks
 
-The `post_tool_use.py` hook runs 7 regex-based quality checks on `.ts`/`.tsx` files after every Write/Edit. No subprocess calls to `tsc` or `eslint` — these are fast pattern matches that catch violations immediately at write-time.
+The `post_tool_use.py` hook runs 7 regex-based quality checks on `.ts`/`.tsx` files after every Write/Edit. No subprocess calls to `tsc` or `eslint` — these are fast pattern matches that catch convention violations immediately at write-time.
 
 **Checks performed:**
 
@@ -318,6 +371,29 @@ Test files (`__tests__/`, `.test.ts`, `.test.tsx`) and generated files (`databas
 <!-- CUSTOMIZE: To add project-specific checks (e.g., framework wrapper enforcement, naming conventions),
 add them to the check_typescript_quality() function in post_tool_use.py. Keep checks lightweight
 (regex only, no subprocess calls) and use break-after-first-match to limit noise. -->
+
+### Project-Specific TypeScript Validator
+
+The `validators/typescript_validator.py` is a **customisation template** for project-specific pattern checks that go beyond the global hook. It ships with all checks commented out — you uncomment and adapt the patterns that match your project:
+
+- Wrong import paths (e.g., direct `@supabase/` imports when you have a wrapper package)
+- Missing framework wrappers (e.g., auth wrappers on server actions)
+- Naming conventions (e.g., `Action` suffix on server action exports)
+- Component library compliance (e.g., flagging `@mui/` when your project uses Fluent UI)
+
+To enable it for specific agents, add a `PostToolUse` hook to the agent's frontmatter in `.claude/agents/`:
+
+```yaml
+hooks:
+  PostToolUse:
+    - matcher: "Write|Edit"
+      hooks:
+        - type: command
+          command: >-
+            uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/typescript_validator.py
+```
+
+By default, it is **not active on any agents** — this avoids wasting tokens on empty checks. Only enable it after you've customised the checks for your project.
 
 ### Blocked Commands
 
@@ -400,6 +476,15 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 | **postgres-expert** | `/postgres-expert` | Guides database migrations, RLS policies, functions, triggers, and type generation |
 | **playwright-e2e** | `/playwright-e2e` | Generates Playwright end-to-end test code for critical user flows |
 
+### Vercel & Design
+
+| Skill | Slash Command | Purpose |
+|-------|--------------|---------|
+| **vercel-react-best-practices** | `/vercel-react-best-practices` | React and Next.js performance optimization guidelines from Vercel Engineering — 57 rules across 8 categories |
+| **vercel-composition-patterns** | `/vercel-composition-patterns` | React composition patterns that scale — compound components, render props, context providers, React 19 API changes |
+| **vercel-react-native-skills** | `/vercel-react-native-skills` | React Native and Expo best practices for building performant mobile apps |
+| **web-design-guidelines** | `/web-design-guidelines` | Review UI code against Web Interface Guidelines for accessibility, UX, and design compliance |
+
 ### MCP Wrappers
 
 These skills provide structured guidance for using the MCP server tools effectively:
@@ -427,7 +512,7 @@ Agents are specialized sub-agents that can be delegated tasks via the `Task` too
 | **builder** | Opus | Full tool access | Focused implementation agent. Executes one task at a time, supports skill invocation, follows project patterns. |
 | **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests. Reports PASS/FAIL to orchestrator. |
 
-The `builder` and `validator` agents are designed for team workflows where a lead agent coordinates multiple builders and validators working on different tasks.
+The `builder` and `validator` agents are designed for team workflows where a lead agent coordinates multiple builders and validators working on different phases. Both run in `bypassPermissions` mode for autonomous operation — quality is enforced by the global PostToolUse hook, builder self-verification (`pnpm test` + `pnpm run typecheck`), and the independent validator review cycle, not by permission prompts.
 
 ---
 
@@ -450,13 +535,25 @@ Rule files in `.claude/rules/` are automatically loaded by Claude Code and provi
 | `route-handlers.md` | API route handler conventions, request/response patterns, middleware |
 | `security.md` | RLS enforcement, secret management, authentication, multi-tenant data isolation, OAuth callbacks, security checklist |
 | `testing.md` | Vitest configuration, mock patterns, TDD workflow, component testing, E2E testing approach |
+| `date-formatting.md` | Date parsing safety: YYYY-MM-DD strings must be parsed as local time (not UTC) to avoid off-by-one display bugs |
 | `ui-components.md` | Component library usage, when to use shared components vs custom UI, styling conventions |
 
 ---
 
 ## MCP Servers
 
-Five MCP (Model Context Protocol) servers are configured in `.mcp.json`. They provide Claude Code with additional capabilities via direct tool calls.
+Five MCP (Model Context Protocol) servers provide Claude Code with additional capabilities via direct tool calls.
+
+**Where to configure:**
+
+| Level | File | Scope |
+|-------|------|-------|
+| **User-level** (recommended) | `~/.claude.json` under `"mcpServers"` | Available in every project automatically |
+| **Project-level** | `.mcp.json` in project root | Only available in that project |
+
+For user-level setup, add the `mcpServers` key to `~/.claude.json`. For project-level, copy `.mcp.json.example` to `.mcp.json` and add your API keys. See the [Quick Start](#quick-start) for details.
+
+> **nvm users:** If `npx` isn't in your base PATH (common with nvm), use the full path in your MCP config: `/home/you/.nvm/versions/node/vX.Y.Z/bin/npx` instead of bare `npx`.
 
 ### Playwright
 
@@ -753,17 +850,24 @@ The `notify.py` utility sends HTTP requests to `localhost:9999` for sound alerts
 
 ### MCP servers not loading
 
-**Symptom:** MCP tool calls fail or are not available.
+**Symptom:** MCP tool calls fail or servers show as "failed" in the MCP management screen.
 
 **Check:**
-1. Verify `.mcp.json` exists in the project root
+1. Verify MCP config exists — either `~/.claude.json` (user-level) or `.mcp.json` (project-level)
 2. Verify API keys are set (not placeholder values)
-3. Check that `npx` is available: `npx --version`
-4. Try running the MCP server manually:
+3. Check that `npx` is resolvable: `npx --version`
+4. **nvm users:** If `npx --version` fails or MCP servers can't start, use the full nvm path instead of bare `npx`:
+   ```json
+   {
+     "command": "/home/you/.nvm/versions/node/v22.22.0/bin/npx"
+   }
+   ```
+   Find your path with: `ls ~/.nvm/versions/node/*/bin/npx`
+5. Try running the MCP server manually:
    ```bash
    npx @playwright/mcp@latest
    ```
-5. For Playwright, ensure browsers are installed:
+6. For Playwright, ensure browsers are installed:
    ```bash
    npx playwright install chromium
    ```
@@ -773,19 +877,25 @@ The `notify.py` utility sends HTTP requests to `localhost:9999` for sound alerts
 **Symptom:** Slash command or `Skill` tool call returns "skill not found".
 
 **Check:**
-1. Verify the skill directory exists: `ls .claude/skills/`
-2. Verify each skill has a `SKILL.md` file
-3. Skill names match the directory name (e.g., `/create-plan` maps to `.claude/skills/create-plan/`)
+1. Verify skills exist at user-level (`ls ~/.claude/skills/`) or project-level (`ls .claude/skills/`)
+2. If using symlinks, verify they resolve: `ls -la ~/.claude/skills`
+3. Verify each skill has a `SKILL.md` file
+4. Skill names match the directory name (e.g., `/create-plan` maps to `skills/create-plan/`)
+5. Skills added mid-session require a Claude Code restart to be detected
 
-### TypeScript validator warnings not appearing
+### TypeScript quality warnings not appearing
 
 **Symptom:** Code quality issues not flagged after Write/Edit.
 
 **Check:**
-1. The validator only runs on `.ts` and `.tsx` files
-2. Test files are only checked for hardcoded secrets
-3. Files in `node_modules`, `.next`, `dist`, `__tests__`, and `__mocks__` are skipped
-4. Run the validator manually:
+1. The global hook (`post_tool_use.py`) only runs on `.ts` and `.tsx` files
+2. Test files (`__tests__/`, `.test.ts`) and generated files (`database.types`, `.gen.`) are skipped
+3. Files in `node_modules`, `.next`, and `dist` are skipped
+4. Run the global hook manually:
+   ```bash
+   echo '{"tool_name":"Write","tool_input":{"file_path":"test.ts"},"session_id":"test"}' | uv run .claude/hooks/post_tool_use.py
+   ```
+5. If you've enabled the project-specific `typescript_validator.py` on agents, test it separately:
    ```bash
    echo '{"tool_name":"Write","tool_input":{"file_path":"test.ts"}}' | uv run .claude/hooks/validators/typescript_validator.py
    ```

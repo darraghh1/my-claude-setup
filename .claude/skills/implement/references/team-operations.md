@@ -25,7 +25,7 @@ Each builder follows this flow:
 
 ## Validator Teammate Lifecycle
 
-**Validators are ephemeral, like builders.** Each phase gets a fresh validator spawned on-demand when its builder reports completion. This eliminates the single-validator bottleneck — when 3 builders complete in parallel, 3 validators review concurrently. Each validator is named to match its builder (`validator-1` for `builder-1`, etc.).
+**Validators are ephemeral, like builders.** Each phase gets a fresh validator spawned on-demand when its builder reports completion. Each validator is named to match its builder (`validator-1` for `builder-1`, etc.). Max 2 validators active at a time (one per builder in a batch), respecting the 4-agent total cap.
 
 The validator follows this flow:
 
@@ -72,7 +72,9 @@ The user experienced each of these failures. Understanding the harm helps you av
 | Builder running `/code-review` on its own code | Self-review blind spots — the author cannot objectively review their own work |
 | Forgetting to update phase status | Plan becomes stale, next session confused about progress |
 | Skipping TaskCreate for phase tracking | Orchestrator loses progress after context compact; no user-visible spinners |
-| More than 2-3 builders at once | Context pressure on orchestrator from concurrent messages |
+| More than 2 builders per batch | Context pressure on orchestrator from concurrent messages |
+| More than 4 total active agents (builders + validators) | Session crash, orchestrator overwhelmed |
+| Spawning new builders mid-batch ("filling open slots") | Ratchet effect — agent count only goes up, never stabilises |
 | Ignoring test failures from previous phases | Broken tests pile up, eventually blocking the entire plan |
 | Skipping TeamDelete after completion | Stale team directories clutter filesystem |
 | Polling TaskOutput instead of waiting for messages | Wastes context; teammates send messages automatically |
@@ -155,9 +157,11 @@ The Write tool **silently fails** if you haven't Read the file first. This has c
 
 Quality checks execute in this order during a phase:
 
-1. **PostToolUse hook** (`typescript_validator.py`) — catches issues at write time (fastest feedback, runs on both builder and validator)
+1. **Global PostToolUse hook** (`post_tool_use.py`) — catches common CLAUDE.md violations at write time (console.log, `any` types, missing server-only, secrets, admin client). Runs on all agents via settings.json — lightweight regex checks, non-blocking warnings.
 2. **Builder self-verification** — `pnpm test` + `pnpm run typecheck` after all steps complete (builder confirms its own work compiles and tests pass)
 3. **Validator's `/code-review`** — comprehensive, reference-grounded review with auto-fix (independent agent, fresh perspective, catches blind spots)
 4. **Validator verification** (conditional) — `pnpm run typecheck` + `pnpm test` only if code review auto-fixed files (skipped when no changes — builder's verification still holds)
 
 The key principle: **the builder never reviews its own code**. Layers 1-2 are self-verification (does it compile? do tests pass?). Layers 3-4 are independent review (does it follow patterns? is it correct?).
+
+Note: The agent-specific `typescript_validator.py` PostToolUse hook was removed from builder/validator/tdd-guide/security-reviewer agents. It was a project-customisation template with all checks commented out — running on every Write/Edit for zero benefit. The global `post_tool_use.py` hook covers the important checks. When deploying to a specific project, customise `typescript_validator.py` and re-enable if needed.

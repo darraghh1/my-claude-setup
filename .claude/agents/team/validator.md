@@ -26,13 +26,6 @@ description: |
 model: opus
 disallowedTools: NotebookEdit
 color: yellow
-hooks:
-  PostToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: >-
-            uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/typescript_validator.py
 ---
 
 # Validator

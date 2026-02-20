@@ -26,13 +26,6 @@ description: |
 tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob"]
 color: magenta
 model: sonnet
-hooks:
-  PostToolUse:
-    - matcher: "Write|Edit"
-      hooks:
-        - type: command
-          command: >-
-            uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/typescript_validator.py
 ---
 
 # Security Reviewer — Next.js Supabase TypeScript
