@@ -1,0 +1,166 @@
+<mxfile host="embed.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.5.1">
+  <diagram id="i6WMsej-z_FpHDw56HzO" name="Page-1">
+    <mxGraphModel dx="2276" dy="725" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="plan-container" parent="1" style="rounded=1;fillColor=#eff6ff;gradientColor=#dbeafe;gradientDirection=south;strokeColor=#93c5fd;strokeWidth=1.5;fontSize=12;fontStyle=1;fontColor=#1d4ed8;verticalAlign=top;shadow=1;" value="/create-plan — Orchestrator Loop" vertex="1"><mxGeometry height="790" width="420" x="-10" y="10" as="geometry" /></mxCell>
+        <mxCell id="p-clarify" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#2563eb;fontSize=13;fontStyle=1;shadow=1;" value="Clarify Requirements" vertex="1">
+          <mxGeometry height="36" width="240" x="95" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="planner-group" parent="1" style="rounded=1;fillColor=#fdf4ff;gradientColor=#fae8ff;gradientDirection=south;strokeColor=#d946ef;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#a21caf;verticalAlign=top;dashed=1;" value="Planner (ephemeral, per plan)" vertex="1">
+          <mxGeometry height="175" width="330" x="50" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="p-templates" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#d946ef;fontColor=#a21caf;fontSize=12;fontStyle=1;shadow=1;" value="Read templates + codebase refs" vertex="1">
+          <mxGeometry height="30" width="280" x="75" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="p-create" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#d946ef;fontColor=#a21caf;fontSize=12;fontStyle=1;shadow=1;" value="Create plan.md + phases" vertex="1">
+          <mxGeometry height="30" width="280" x="75" y="182" as="geometry" />
+        </mxCell>
+        <mxCell id="p-selfval" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#d946ef;fontColor=#a21caf;fontSize=12;fontStyle=1;shadow=1;" value="Self-validate each phase" vertex="1">
+          <mxGeometry height="30" width="280" x="75" y="224" as="geometry" />
+        </mxCell>
+        <mxCell id="p-checkpoint" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#1e40af;fontSize=11;fontStyle=1;" value="User
+Checkpoint" vertex="1">
+          <mxGeometry height="56" width="130" x="150" y="330" as="geometry" />
+        </mxCell>
+        <mxCell id="p-val-group" parent="1" style="rounded=1;fillColor=#f0fdf4;gradientColor=#dcfce7;gradientDirection=south;strokeColor=#4ade80;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#15803d;verticalAlign=top;dashed=1;" value="Validators (batched, ephemeral)" vertex="1">
+          <mxGeometry height="80" width="330" x="50" y="450" as="geometry" />
+        </mxCell>
+        <mxCell id="p-review" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="/review-plan per file" vertex="1">
+          <mxGeometry height="30" width="280" x="75" y="478" as="geometry" />
+        </mxCell>
+        <mxCell id="p-passes" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=11;fontStyle=1;" value="Passes?" vertex="1">
+          <mxGeometry height="50" width="120" x="155" y="570" as="geometry" />
+        </mxCell>
+        <mxCell id="p-audit" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#2563eb;fontSize=12;fontStyle=1;shadow=1;" value="/audit-plan
+(3+ phases)" vertex="1">
+          <mxGeometry height="40" width="240" x="95" y="670" as="geometry" />
+        </mxCell>
+        <mxCell id="p-ready" parent="1" style="rounded=1;arcSize=50;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=13;fontStyle=1;shadow=1;" value="Plan Ready" vertex="1">
+          <mxGeometry height="34" width="200" x="115" y="745" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-1" edge="1" parent="1" source="p-clarify" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-templates" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-2" edge="1" parent="1" source="p-templates" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-create" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-3" edge="1" parent="1" source="p-create" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-selfval" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-4" edge="1" parent="1" source="p-selfval" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-checkpoint" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-approve" edge="1" parent="1" source="p-checkpoint" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#16a34a;fontSize=11;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-review" value="Approve">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-revise" edge="1" parent="1" source="p-checkpoint" style="endArrow=block;endFill=1;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=11;fontStyle=1;exitX=0;exitY=0.5;entryX=0;entryY=0.4;" target="planner-group" value="Revise"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="12" y="358" /><mxPoint x="12" y="180" /></Array></mxGeometry></mxCell>
+        <mxCell id="pe-5" edge="1" parent="1" source="p-review" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-passes" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-yes" edge="1" parent="1" source="p-passes" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#16a34a;fontSize=11;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-audit" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe-fix" edge="1" parent="1" source="p-passes" style="endArrow=block;endFill=1;strokeColor=#ef4444;strokeWidth=1.5;fontColor=#dc2626;fontSize=11;fontStyle=1;exitX=0;exitY=0.5;entryX=0;entryY=0.7;" target="planner-group" value="Fix"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="4" y="595" /><mxPoint x="4" y="233" /></Array></mxGeometry></mxCell>
+        <mxCell id="pe-6" edge="1" parent="1" source="p-audit" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p-ready" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="impl-container" parent="1" style="rounded=1;fillColor=#fafafa;strokeColor=#d1d5db;strokeWidth=1.5;fontSize=12;fontStyle=1;fontColor=#374151;verticalAlign=top;shadow=1;" value="/implement — Orchestrator Loop" vertex="1"><mxGeometry height="790" width="580" x="460" y="10" as="geometry" /></mxCell>
+        <mxCell id="i-find" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=13;fontStyle=1;shadow=1;" value="Find unblocked phases" vertex="1">
+          <mxGeometry height="36" width="220" x="550" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="i-alldone" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=11;" value="All done?" vertex="1">
+          <mxGeometry height="48" width="120" x="600" y="116" as="geometry" />
+        </mxCell>
+        <mxCell id="i-done-pill" parent="1" style="rounded=1;arcSize=50;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=13;fontStyle=1;shadow=1;" value="All done" vertex="1">
+          <mxGeometry height="32" width="130" x="790" y="124" as="geometry" />
+        </mxCell>
+        <mxCell id="i-gate" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=11;" value="Phase gate" vertex="1">
+          <mxGeometry height="48" width="120" x="600" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="i-gate-ann" parent="1" style="rounded=1;fillColor=#fefce8;strokeColor=#eab308;fontColor=#a16207;fontSize=10;dashed=1;align=center;whiteSpace=wrap;html=1;" value="&lt;b&gt;Gate Checks&lt;/b&gt;&lt;br&gt;No placeholders&lt;br&gt;Phase review passes" vertex="1"><mxGeometry height="52" width="160" x="810" y="198" as="geometry" /></mxCell>
+        <mxCell id="builder-group" parent="1" style="rounded=1;fillColor=#faf5ff;gradientColor=#f3e8ff;gradientDirection=south;strokeColor=#a78bfa;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#7c3aed;verticalAlign=top;dashed=1;" value="Builder (ephemeral, per phase)" vertex="1">
+          <mxGeometry height="165" width="290" x="515" y="282" as="geometry" />
+        </mxCell>
+        <mxCell id="i-ref" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="Find reference + domain skill" vertex="1">
+          <mxGeometry height="30" width="242" x="539" y="312" as="geometry" />
+        </mxCell>
+        <mxCell id="i-tdd" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="TDD first, then implement" vertex="1">
+          <mxGeometry height="30" width="242" x="539" y="354" as="geometry" />
+        </mxCell>
+        <mxCell id="i-build-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck" vertex="1">
+          <mxGeometry height="30" width="242" x="539" y="396" as="geometry" />
+        </mxCell>
+        <mxCell id="val-group" parent="1" style="rounded=1;fillColor=#f0fdf4;gradientColor=#dcfce7;gradientDirection=south;strokeColor=#4ade80;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#15803d;verticalAlign=top;dashed=1;" value="Validator (ephemeral, per phase)" vertex="1">
+          <mxGeometry height="110" width="290" x="515" y="474" as="geometry" />
+        </mxCell>
+        <mxCell id="i-codereview" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="/code-review + auto-fix" vertex="1">
+          <mxGeometry height="30" width="242" x="539" y="504" as="geometry" />
+        </mxCell>
+        <mxCell id="i-val-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck" vertex="1">
+          <mxGeometry height="30" width="242" x="539" y="546" as="geometry" />
+        </mxCell>
+        <mxCell id="i-result" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=11;" value="Result" vertex="1">
+          <mxGeometry height="48" width="120" x="600" y="624" as="geometry" />
+        </mxCell>
+        <mxCell id="i-phase-done" parent="1" style="rounded=1;fillColor=#f0fdf4;strokeColor=#22c55e;fontColor=#166534;fontSize=13;fontStyle=1;shadow=1;" value="Phase done" vertex="1">
+          <mxGeometry height="32" width="130" x="790" y="632" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-1" edge="1" parent="1" source="i-find" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-alldone" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-yes" edge="1" parent="1" source="i-alldone" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#16a34a;fontSize=11;fontStyle=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="i-done-pill" value="Yes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-no" edge="1" parent="1" source="i-alldone" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;fontColor=#6b7280;fontSize=10;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-gate" value="No">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-ann" edge="1" parent="1" source="i-gate" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="i-gate-ann" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-2" edge="1" parent="1" source="i-gate" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="builder-group" value=""><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ie-3" edge="1" parent="1" source="i-ref" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-tdd" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-4" edge="1" parent="1" source="i-tdd" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-build-test" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-5" edge="1" parent="1" source="i-build-test" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="val-group" value=""><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ie-6" edge="1" parent="1" source="i-codereview" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-val-test" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-7" edge="1" parent="1" source="i-val-test" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="i-result" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-pass" edge="1" parent="1" source="i-result" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#16a34a;fontSize=11;fontStyle=1;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="i-phase-done" value="PASS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ie-fail" edge="1" parent="1" source="i-result" style="endArrow=block;endFill=1;strokeColor=#ef4444;strokeWidth=1.5;fontColor=#dc2626;fontSize=11;fontStyle=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" target="builder-group" value="FAIL">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="490" y="648" />
+              <mxPoint x="490" y="365" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="ie-next" edge="1" parent="1" source="i-phase-done" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#16a34a;fontSize=11;fontStyle=1;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" target="i-find" value="Next phase">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="985" y="648" />
+              <mxPoint x="985" y="68" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cross-connector" edge="1" parent="1" source="p-ready" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" target="i-find" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="762" />
+              <mxPoint x="440" y="68" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

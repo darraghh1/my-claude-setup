@@ -55,8 +55,8 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 24 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
-| **Agents** | 7 agent definitions | Specialized sub-agents for architecture, review, testing, building |
+| **Skills** | 25 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
+| **Agents** | 8 agent definitions | Specialized sub-agents for architecture, review, testing, building, planning |
 | **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
 | **Rules** | 15 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
@@ -69,7 +69,7 @@ This setup's primary value is a **structured development pipeline** — from fea
 ### The Pipeline
 
 <picture>
-  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with its builder-validator loop" src="docs/pipeline.svg" width="950">
+  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with its builder-validator loop" src="docs/pipeline.png" width="950">
 </picture>
 
 ### Atomic Phases
@@ -88,7 +88,14 @@ Each phase file includes a `skill:` field in its frontmatter specifying which do
 
 ### Team Orchestration
 
-The `/implement` skill acts as a **thin dispatcher** that coordinates a team of specialized agents:
+Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern — an orchestrator skill that coordinates ephemeral agent teammates via checkpoints and message routing:
+
+| Pipeline | Orchestrator | Ephemeral Agents | Communication |
+|----------|-------------|-----------------|---------------|
+| **Planning** (`/create-plan`) | Clarifies requirements, relays checkpoints to user, spawns validators | Planner (creates plan.md + phases), Validators (run `/review-plan`) | Checkpoints: planner reports plan summary and phase completion for user approval |
+| **Implementation** (`/implement`) | Finds phases, runs gate checks, routes PASS/FAIL | Builder (implements one phase), Validator (runs `/code-review`) | Builder reports completion → validator reviews → orchestrator routes verdict |
+
+#### Implementation Team (`/implement`)
 
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
@@ -96,11 +103,19 @@ The `/implement` skill acts as a **thin dispatcher** that coordinates a team of 
 | **Builder** | One phase (ephemeral) | Full phase implementation — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
 | **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
 
-**Why both are ephemeral:** Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
+#### Planning Team (`/create-plan`)
 
-**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
+| Role | Lifetime | Responsibility |
+|------|----------|---------------|
+| **Orchestrator** | Entire session | Clarifies requirements with user, spawns planner + validators, relays checkpoints for user approval, routes review feedback |
+| **Planner** | One plan (ephemeral) | Reads templates, explores codebase references, creates plan.md + all phase files, self-validates. Reports at two checkpoints for user course-correction. |
+| **Validator** | One file (ephemeral) | Runs `/review-plan` against plan.md or a single phase file. Reports template score + codebase compliance. |
 
-The orchestrator uses a **batch processing model** with strict concurrency limits:
+**Why agents are ephemeral:** Each task gets a fresh agent with a clean 200K context window. After the work cycle completes, agents are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
+
+**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator/planner agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
+
+The `/implement` orchestrator uses a **batch processing model** with strict concurrency limits:
 
 | Constraint | Limit | Why |
 |-----------|-------|-----|
@@ -249,7 +264,7 @@ Optional:
 
 ```text
 .claude/
-├── agents/                         # 7 agent definitions
+├── agents/                         # 8 agent definitions
 │   ├── architect.md                # Architecture design and trade-off analysis
 │   ├── code-quality-reviewer.md    # Code quality and pattern compliance
 │   ├── doc-updater.md              # Documentation maintenance
@@ -257,6 +272,7 @@ Optional:
 │   ├── tdd-guide.md                # Test-Driven Development specialist
 │   └── team/
 │       ├── builder.md              # Focused implementation agent
+│       ├── planner.md              # Ephemeral planning agent
 │       └── validator.md            # Task verification and auto-fix agent
 ├── hooks/                          # 11 Python hook scripts
 │   ├── config/
@@ -297,8 +313,9 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 24 skill directories (each with SKILL.md)
+├── skills/                         # 25 skill directories (each with SKILL.md)
 │   ├── audit-plan/
+│   ├── builder-workflow/
 │   ├── cache-audit/
 │   ├── code-review/
 │   ├── context7-mcp/
@@ -310,6 +327,7 @@ Optional:
 │   ├── improve-prompt/
 │   ├── playwright-e2e/
 │   ├── playwright-mcp/
+│   ├── planner-workflow/
 │   ├── postgres-expert/
 │   ├── react-form-builder/
 │   ├── review-plan/
@@ -446,7 +464,7 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 
 | Skill | Slash Command | Purpose |
 |-------|--------------|---------|
-| **create-plan** | `/create-plan` | Generates phased implementation plans with task breakdowns, TDD ordering, and acceptance criteria |
+| **create-plan** | `/create-plan` | Orchestrates plan creation — spawns an ephemeral planner agent with user checkpoints, then validators for review |
 | **review-plan** | `/review-plan` | Reviews and validates implementation plans against project patterns and conventions |
 | **audit-plan** | `/audit-plan` | Audits existing plans for completeness, risk, and alignment with architecture |
 | **implement** | `/implement` | Executes implementation phases from a plan (handles TDD, coding, review loop) |
@@ -515,9 +533,10 @@ Agents are specialized sub-agents that can be delegated tasks via the `Task` too
 | **tdd-guide** | Sonnet | Read, Write, Edit, Bash, Grep | Test-Driven Development specialist using Vitest with happy-dom. Guides RED-GREEN-REFACTOR workflow. |
 | **doc-updater** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Documentation maintenance. Updates CLAUDE.md, architecture maps, and feature documentation. |
 | **builder** | Opus | Full tool access | Focused implementation agent. Executes one task at a time, supports skill invocation, follows project patterns. |
+| **planner** | Opus | Full tool access | Ephemeral planning agent. Creates plan.md + phase files grounded in codebase patterns. Reports at checkpoints for user course-correction. |
 | **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests. Reports PASS/FAIL to orchestrator. |
 
-The `builder` and `validator` agents are designed for team workflows where a lead agent coordinates multiple builders and validators working on different phases. Both run in `bypassPermissions` mode for autonomous operation — quality is enforced by the global PostToolUse hook, builder self-verification (`pnpm test` + `pnpm run typecheck`), and the independent validator review cycle, not by permission prompts.
+The `builder`, `planner`, and `validator` agents are designed for team workflows where an orchestrator skill coordinates multiple ephemeral agents. All run in `bypassPermissions` mode for autonomous operation — quality is enforced by the global PostToolUse hook, self-verification steps, and independent validator review cycles, not by permission prompts.
 
 ---
 

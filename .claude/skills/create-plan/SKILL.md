@@ -1,13 +1,11 @@
 ---
 name: create-plan
-description: "Create phased implementation plans for new features or projects. Generates plan.md with phase files, TDD ordering, and acceptance criteria."
+description: "Create phased implementation plans for new features or projects. Spawns an ephemeral planner agent for plan/phase creation, then validators for review. Interactive checkpoints let the user course-correct during planning."
 argument-hint: "[feature-name] [description]"
-context: fork
-agent: general-purpose
-model: sonnet
-allowed-tools: Read, Write, Edit, Glob, Grep, Task, Skill, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion
+disable-model-invocation: true
+allowed-tools: Read, Write, Edit, Glob, Grep, Task, Skill, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion, TeamCreate, TeamDelete, SendMessage
 metadata:
-  version: 1.0.0
+  version: 2.0.0
 ---
 
 # Create Complete Plan
@@ -20,14 +18,19 @@ Existing plans in the repository (avoid naming conflicts):
 
 !`ls plans/ 2>/dev/null || echo "(no plans directory yet)"`
 
-## Workflow Overview
+## Architecture
 
-This skill creates a full planning package:
-1. **Folder structure** with date-prefixed naming
-2. **plan.md** with all sections (phases added iteratively)
-3. **Reference reading** from actual codebase for pattern accuracy
-4. **Phase files** created one at a time with correct code patterns
-5. **Review** via sub-agents for template + codebase compliance
+This skill is a **thin dispatcher**. It does NOT read codebase references, extract patterns, or create phase files. The planner handles all planning work via the preloaded `planner-workflow` skill.
+
+| Role | Responsibility |
+|------|---------------|
+| **Orchestrator (you)** | Clarify requirements with user, spawn/shutdown planner + validators, relay checkpoints, route PASS/FAIL |
+| **Planner** | Plan creation: read templates, explore codebase, create plan.md + phase files, self-validate. Does NOT review its own plan. |
+| **Validator** | Independent review: runs `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
+
+**The planner is ephemeral.** It gets a fresh 200K context, creates the plan artifacts, and shuts down when done. This prevents context contamination and ensures skill instructions are never compacted away.
+
+---
 
 ## Step 1: Clarify Requirements
 
@@ -46,248 +49,218 @@ Read the task description above. If anything is ambiguous or underspecified, use
 
 If the description says "add voice commands" but doesn't specify which commands, ASK. If it says "improve performance" but doesn't specify what's slow, ASK. The user prefers a brief clarification dialogue over assumptions that lead to rework.
 
-## Step 2: Read Templates
+## Step 2: Create Team (First Run Only)
 
-The user created these templates specifically so phases don't miss required sections. Skipping template reading causes incomplete phases that require rework during implementation.
-
-Read both templates completely:
-- `references/PLAN-TEMPLATE.md`
-- `references/PHASE-TEMPLATE.md`
-
-Every section in these templates is required.
-
-## Step 3: Create Folder Structure
-
-**Folder naming pattern:** `plans/{YYMMDD}-{feature-name}/`
-
-Examples:
-- `plans/250202-voice-assistant/`
-- `plans/250202-notification-system/`
-- `plans/250202-api-refactor/`
-
-**Create these items:**
-1. Main folder: `plans/{YYMMDD}-{feature-name}/`
-2. Planning reviews folder: `plans/{YYMMDD}-{feature-name}/reviews/planning/`
-3. Code reviews folder: `plans/{YYMMDD}-{feature-name}/reviews/code/`
-
-## Step 4: Create Task List
-
-Tasks survive context compacts — skipping this check causes duplicate tasks and lost progress.
-
-Before creating tasks, run `TaskList` to check if tasks already exist from a previous session or before a compact. If tasks exist:
-1. Read existing tasks with `TaskGet` for each task ID
-2. Find the first task with status `pending` or `in_progress`
-3. Resume from that task — do NOT recreate the task list
-
-If no tasks exist, create them now. The user depends on task tracking to prevent skipped sections.
-
-**Example task list:**
+Create the team for this planning session. Reuse it if resuming.
 
 ```
-Task 1: Create plan.md structure (all sections except Phase Table content)
-Task 2: Read codebase references
-Task 3: Design phase breakdown
-Task 4: Create Phase 01 - [Title]
-Task 5: Create Phase 02 - [Title]
-[...continue for all phases...]
-Task N: Review complete plan (delegate to review sub-agents)
-Task N+1: Flow audit (3+ phases only — /audit-plan)
+TeamCreate({
+  team_name: "{feature-name}-planning",
+  description: "Planning team for {feature description}"
+})
 ```
 
-## Step 5: Create plan.md (Without Phase Details)
+## Step 3: Spawn Planner
 
-Write `plans/{folder}/plan.md` with ALL sections from the template:
-
-1. YAML Frontmatter (title, status, priority, tags, dates)
-2. Executive Summary (Mission, Big Shift, Deliverables)
-3. Phasing Strategy (Phase Constraints, Phase File Naming)
-4. **Phase Table** — Header row only, no content rows yet
-5. Architectural North Star (patterns with Core Principle + Enforcement)
-6. Component Library Priority (check your UI library before building custom)
-7. Security Requirements (RLS, Input Validation, Authorization, Error Handling)
-8. Implementation Standards (Test Strategy, Documentation Standard)
-9. Success Metrics & Quality Gates
-10. Global Decision Log (ADRs)
-11. Resources & References
-
-Complete ALL sections except Phase Table rows. Missing sections are caught during review (Step 9) but cost extra review cycles to fix.
-
-## Step 6: Design Phase Breakdown
-
-Before creating phase files, plan the full decomposition.
-
-### Load Frontend Guidelines (If Applicable)
-
-If the feature involves React components, Next.js pages, or UI work, invoke this skill BEFORE designing phases:
+Spawn a fresh planner with the requirements from Step 1. The `planner-workflow` skill is preloaded via the planner agent's `skills:` field.
 
 ```
-/vercel-react-best-practices
+Task({
+  description: "Create plan for {feature}",
+  subagent_type: "planner",
+  model: "opus",
+  team_name: "{feature-name}-planning",
+  name: "planner-1",
+  mode: "bypassPermissions",
+  prompt: `Create a plan for: {feature description}
+
+Requirements:
+{requirements from Step 1 — include all clarified answers}
+
+Plan folder: plans/{YYMMDD}-{feature-name}
+
+Follow your preloaded planner-workflow skill. It teaches you how to:
+1. Read plan and phase templates from $CLAUDE_PROJECT_DIR/.claude/skills/create-plan/references/
+2. Explore codebase for reference patterns
+3. Create plan.md scaffold
+4. Report checkpoint 1 to team-lead (plan summary for user review)
+5. Wait for feedback, then create all phase files
+6. Report checkpoint 2 to team-lead (completion summary)
+
+IMPORTANT: Before using Write on existing files, Read first or it silently fails. Prefer Edit for modifications.`
+})
 ```
 
-This loads 57 performance rules across 8 categories. Reference these when designing data fetching patterns, component architecture, and bundle optimization requirements.
+## Step 4: User Checkpoint — Plan Review
 
-### Pre-Implementation Analysis
+When the planner reports checkpoint 1 (plan.md summary with proposed phase breakdown):
 
-Before scoping phases, run through the checklist in `.claude/rules/pre-implementation-analysis.md`. Its 7 dimensions — existing patterns, blast radius, security surface, performance, maintainability, multi-tenant safety, and upstream compatibility — directly inform phase boundaries and what each phase's `Prerequisites & Clarifications` section should cover. Findings from this analysis (e.g. "touches auth flow", "new table needs RLS") should surface in the relevant phase files, not be left implicit.
+1. **Show the user** the plan summary — executive summary, phase breakdown, architecture decisions
+2. **Ask for approval/feedback** using `AskUserQuestion`:
+   - Approve: proceed to phase creation
+   - Changes needed: specify what to adjust
 
-### Phase Constraints
+3. **Route the response:**
+   - **If approved:** Message the planner to continue with phases
+     ```
+     SendMessage({
+       type: "message",
+       recipient: "planner-1",
+       content: "Plan approved. Proceed with creating all phase files.",
+       summary: "Plan approved — create phases"
+     })
+     ```
+   - **If changes needed:** Message the planner with specific feedback
+     ```
+     SendMessage({
+       type: "message",
+       recipient: "planner-1",
+       content: "User feedback:\n{specific changes requested}\n\nRevise plan.md and re-send checkpoint 1.",
+       summary: "Revision requested on plan"
+     })
+     ```
+   - Wait for the revised checkpoint, then repeat this step
 
-Phases that exceed one context window cause Claude to lose earlier context mid-implementation, producing incomplete or inconsistent code. Each phase should be atomic enough for implementation in **1 context window** (~15KB document, ~2-3 hour focused session).
+## Step 5: User Checkpoint — Phases Complete
 
-**30 small phases > 5 large phases**
+When the planner reports checkpoint 2 (all phases created and self-validated):
 
-| Wrong Approach | Right Approach |
-|----------------|----------------|
-| "Phase 01: Database + API + UI" | Split into 3 phases |
-| "Phase 02: Full Feature Implementation" | Break into atomic steps |
-| "Phase 03: Testing and Polish" | TDD is Step 0 in EACH phase |
+1. **Show the user** the full phase breakdown — titles, skills, dependencies, validation results
+2. **Ask for approval/feedback:**
+   - Approve: proceed to reviews
+   - Changes needed: message planner with feedback, wait for revised checkpoint
 
-**TDD Note:** Both backend and frontend code require full unit tests:
-- **Backend** (services, schemas, APIs): Unit tests in `__tests__/{feature}/`
-- **Frontend** (React/TSX): Component tests using happy-dom (default) and @testing-library/react
-- The default happy-dom environment works for component tests. Only add `// @vitest-environment happy-dom` if explicitly overriding another environment.
-- Use `it.todo('description')` for TDD stubs
-- Use `vi.hoisted()` for mock variables needed before module evaluation
-- For Supabase client mocks, add `.then()` method for thenable/awaitable pattern
-- Path aliases in tests: use your project's configured path alias (e.g., `@/` or `~/`)
+3. **Route the response:**
+   - **If approved:** Continue to Step 6 (spawn validators)
+   - **If changes needed:** Message planner with feedback, loop until approved
 
-**Atomic phase examples:**
-- Phase 01: Database Schema & RLS Policies
-- Phase 02: Service Layer Functions
-- Phase 03: Server Actions with Validation
-- Phase 04: List View Component
-- Phase 05: Create Form Component
+## Step 6: Spawn Validators
 
-**The test:** Can Claude implement this phase without running out of context? If unsure, split it.
+After user approves the phases, spawn review validators to check template compliance and codebase patterns.
 
-## Step 7: Read Codebase References
+Spawn **one validator per file** for thorough reviews. See [references/delegation-guide.md](references/delegation-guide.md) for prompt templates and batching rules.
 
-Code blocks written from memory often don't match the real codebase — this is the #1 source of phase quality issues. Reading actual files before writing phases ensures patterns are accurate.
+### Validator Prompt — plan.md
 
-Identify which file types the feature will need and read one reference for each:
+```
+Task({
+  description: "Review plan.md",
+  subagent_type: "general-purpose",
+  team_name: "{feature-name}-planning",
+  name: "reviewer-plan",
+  mode: "bypassPermissions",
+  run_in_background: true,
+  prompt: `Your FIRST action must be to call the Skill tool with:
+- skill: "review-plan"
+- args: "plans/{folder-name}"
 
-| Feature Needs | Reference to Read |
-|---------------|-------------------|
-| Server actions | Glob `app/home/[account]/**/*server-actions*.ts` → read one |
-| Service layer | Glob `app/home/[account]/**/*service*.ts` → read one |
-| Zod schemas | Glob `app/home/[account]/**/*.schema.ts` → read one |
-| SQL migrations / RLS | Glob `supabase/migrations/*.sql` → read a recent one |
-| React components | Glob `app/home/[account]/**/_components/*.tsx` → read one |
-| Page files | Glob `app/home/[account]/**/page.tsx` → read one |
-| Tests | Glob `__tests__/**/*.test.ts` → read one |
+Do NOT do any other work until you have invoked that skill.
 
-**Key patterns to extract and use in phase code blocks:**
-- Server action pattern: `'use server'` + Zod parse + `getSession()` auth check
-- Account resolution: slug → ID via `client.from('accounts').select('id').eq('slug', data.accountSlug).single()`
-- Permission check: your RLS helper function (e.g., `client.rpc('check_account_access', { ... })`)
-- Supabase client: `createClient()` from `@/lib/supabase/server`
-- Service factory: `createXxxService(client: SupabaseClient<Database>)` wrapping a private class
-- Import paths: `import 'server-only'`, `@/` path alias for project root
-- File naming: `_lib/schema/` (singular), `server-actions.ts`, exports ending in `Action`
-- TypeScript: consider enums or union types for constants, `interface` preferred for objects
-- After mutations: `revalidatePath('/home/[account]/...')`
+The skill will instruct you to read the PLAN-TEMPLATE.md reference and compare
+every section in plan.md against it. Skipping this produces reviews that miss
+template gaps, which the user then discovers during implementation.
 
-Keep these patterns in mind for every code block you write in phase files. The review step (Step 9) will flag any code blocks that deviate from these codebase patterns.
+This is a TEMPLATE COMPLIANCE review — check every section exists and write
+pass/fail for each of the 11 required sections.
 
-## Step 8: Create Phases (Iterative)
-
-For EACH phase, in order:
-
-### 8a: Add Row to Phase Table
-
-Edit `plan.md` to add the phase row:
-
-```markdown
-| **01** | [Title](./phase-01-slug.md) | [Focus] | Pending |
+After the skill completes, report:
+1. The review file location (reviews/planning/plan.md)
+2. The verdict (Ready/Not Ready)
+3. Template score (e.g., "11/11 sections" or "9/11 sections — 2 missing")`
+})
 ```
 
-### 8b: Create Phase File
+### Validator Prompt — Phase File
 
-Write the complete phase file following PHASE-TEMPLATE.md exactly.
+```
+Task({
+  description: "Review phase {NN}",
+  subagent_type: "general-purpose",
+  team_name: "{feature-name}-planning",
+  name: "reviewer-phase-{NN}",
+  mode: "bypassPermissions",
+  run_in_background: true,
+  prompt: `Your FIRST action must be to call the Skill tool with:
+- skill: "review-plan"
+- args: "plans/{folder-name} phase {NN}"
 
-**File:** `plans/{folder}/phase-{NN}-{slug}.md`
+Do NOT do any other work until you have invoked that skill.
 
-**Include `skill` in Frontmatter** — without it, the implementer won't know which skill to invoke and will use generic patterns instead of project-specific ones.
+The skill will instruct you to read the PHASE-TEMPLATE.md reference and compare
+every section in the phase against it. Skipping template or codebase checks produces
+phases that miss required sections or use wrong patterns — the user then discovers
+these during implementation.
 
-| Phase Type | Skill Value |
-|------------|-------------|
-| Database schema, migrations, RLS | `postgres-expert` |
-| Server actions, services, API | `server-action-builder` |
-| React forms with validation | `react-form-builder` |
-| E2E tests | `playwright-e2e` |
-| React components/pages | `vercel-react-best-practices` |
-| UI/UX focused work | `web-design-guidelines` |
+Specifically:
+1. Compare every section against the template
+2. Read a reference implementation from the codebase
+3. Verify code blocks against actual codebase patterns
+4. Write a review file with template score AND codebase compliance issues
 
-**Example frontmatter:**
-```yaml
----
-title: "Phase 01 - Database Schema"
-skill: postgres-expert
-status: pending
----
+This is a TEMPLATE + CODEBASE COMPLIANCE review. Check every section exists
+AND verify code blocks match real codebase patterns.
+
+After the skill completes, report:
+1. The review file location (reviews/planning/phase-{NN}.md)
+2. The verdict (Ready/Not Ready)
+3. Template score (e.g., "12/12 sections")
+4. Codebase score (e.g., "3 issues: 1 critical, 2 medium")`
+})
 ```
 
-For phases spanning multiple concerns, list the primary skill or use comma-separated values:
-```yaml
-skill: react-form-builder, vercel-react-best-practices
+### Batching Rules
+
+Spawning more than 4 concurrent agents causes context window blowout — results flood back (~5KB each), earlier context gets compressed, and the orchestrator produces unreliable summaries.
+
+1. **Maximum 4 validators at a time** — no exceptions
+2. **`run_in_background: true`** on every Task tool call
+3. **`TaskOutput` with `block: true`** to wait for completion
+4. **Wait for ALL validators in a batch** to complete before spawning the next batch
+5. **Summarise each batch** before moving to the next (prevents context bloat)
+
+### Batching Example for 5 Phases (6 Reviews, 2 Batches)
+
+```
+Batch 1 (4 agents max):
+- reviewer-plan:     args: "plans/{folder}"           → plan.md
+- reviewer-phase-01: args: "plans/{folder} phase 01"  → phase-01
+- reviewer-phase-02: args: "plans/{folder} phase 02"  → phase-02
+- reviewer-phase-03: args: "plans/{folder} phase 03"  → phase-03
+→ Wait for completion, then read results
+
+Batch 2 (2 agents):
+- reviewer-phase-04: args: "plans/{folder} phase 04"  → phase-04
+- reviewer-phase-05: args: "plans/{folder} phase 05"  → phase-05
+→ Wait for completion, then read results
 ```
 
-**Required sections** (from template):
-1. YAML Frontmatter (title, description, status, dependencies, tags, dates, **skill**)
-2. Overview (brief description, single-sentence Goal)
-3. Context & Workflow (How the Project Uses This, User Workflow, Problem Being Solved)
-4. Prerequisites & Clarifications (Questions for User with Context/Assumptions/Impact)
-5. Requirements (Functional + Technical)
-6. Decision Log (phase-specific ADRs)
-7. Implementation Steps — **Step 0: TDD is first**
-8. Verifiable Acceptance Criteria (Critical Path, Quality Gates, Integration)
-9. Quality Assurance (Manual Testing, Automated Testing, Performance Testing, Review Checklist)
-10. Dependencies (Upstream, Downstream, External)
-11. Completion Gate (Sign-off checklist)
+## Step 7: Handle Review Verdicts
 
-Code blocks in phases should match codebase patterns from Step 7 — not memory, not generic examples. Generic code blocks cause the implementer to write code that doesn't follow project conventions, creating rework. If you don't remember the exact pattern, re-read the reference file from Step 7 before writing the code block.
+Process each validator's result:
 
-### 8c: Update Task Status
+**PASS (Ready: Yes):**
+- Note the template score and any minor issues
+- Continue to next batch or Step 8
 
-Mark the phase task as completed, move to next phase.
+**FAIL (Ready: No or Critical/High issues):**
+1. Message the planner with the specific issues:
+   ```
+   SendMessage({
+     type: "message",
+     recipient: "planner-1",
+     content: "Review feedback for {file}:\n{validator's findings}\n\nFix the issues and confirm when done.",
+     summary: "Review feedback for {file}"
+   })
+   ```
+2. Wait for the planner to confirm fixes
+3. Re-spawn a validator for the fixed file
+4. Repeat until PASS
 
-### 8d: Validate Phase Quality
+**Show the user review results** after each batch — template scores, codebase compliance, any issues found and fixed.
 
-After creating each phase file, run these validators to catch issues immediately (before review agents get involved). Run them via Bash — they read from stdin but only need `{"cwd": "."}`:
+## Step 8: Flow Audit (3+ Phases)
 
-```bash
-# Check for skeleton/placeholder content (catches the Phase 17 lesson)
-echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_no_placeholders.py \
-  --directory plans/{folder} --extension .md
-
-# Check TDD tasks appear before implementation tasks
-echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_tdd_tasks.py \
-  --directory plans/{folder} --extension .md
-
-# Confirm the phase file was actually created
-echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_new_file.py \
-  --directory plans/{folder} --extension .md
-```
-
-If any validator exits non-zero, fix the issue before moving to the next phase. Placeholder content and missing TDD steps are the two most common causes of rework during implementation.
-
-### 8e: Repeat
-
-Continue until all phases are created.
-
-## Step 9: Review Complete Plan
-
-Independent review agents catch template gaps and codebase compliance issues that self-review misses. The user depends on this step to prevent discovering problems during implementation when they're 10x more costly to fix.
-
-Spawn **one agent per file** for thorough reviews. See [Delegation Guide](references/delegation-guide.md) for:
-- Batching rules (max 4 concurrent agents to prevent context window blowout)
-- Agent prompt templates for plan.md and phase reviews
-- Anti-patterns to avoid when delegating
-- Batching examples for plans of different sizes
-
-## Step 10: Flow Audit (3+ Phases)
-
-For plans with 3 or more phases, run a flow audit to catch structural issues that per-phase reviews cannot see — circular dependencies, missing dependency declarations, wrong phase ordering, and stale artifacts.
+For plans with 3 or more phases, run a flow audit to catch structural issues that per-phase reviews cannot see — circular dependencies, missing dependency declarations, wrong phase ordering, and stale artefacts.
 
 **Skip this step** for 1-2 phase plans (too small for flow issues).
 
@@ -297,23 +270,58 @@ For plans with 3 or more phases, run a flow audit to catch structural issues tha
 
 This invokes `/audit-plan` which writes a report to `{plan-folder}/reviews/planning/flow-audit.md`. The `/implement` orchestrator gate-checks this report before starting implementation — if the overall assessment is "Major Restructuring Needed", implementation blocks.
 
-**If the audit finds Critical/High issues:** Fix them in the phase files before reporting the plan as ready. Re-run `/audit-plan` after fixes to confirm the issues are resolved.
+**Gate logic:**
 
-## Step 11: Report Summary
+| Overall Assessment | Behaviour |
+|--------------------|----------|
+| **"Major Restructuring Needed"** | **HARD BLOCK:** Message planner with issues, wait for fixes, re-audit |
+| **"Significant Issues"** | **SOFT BLOCK:** Show user, ask whether to proceed or fix |
+| **"Minor Issues"** or **"Coherent"** | **PROCEED** to Step 9 |
 
-After reviews and audit complete, provide the user with:
+## Step 9: Cleanup
 
-1. **Folder location:** `plans/{YYMMDD}-{feature-name}/`
-2. **Files created:**
-   - plan.md
-   - phase-01-*.md through phase-NN-*.md
-   - reviews/planning/ folder with review files
-3. **Review status:**
-   - Plan.md: template score (X/11)
-   - Each phase: template score (X/12) + codebase score (N issues by severity)
-   - Flow audit (3+ phases): overall assessment + Critical/High issue count
-4. **Overall verdict:** Ready/Not Ready for implementation
-5. **Critical issues** (if any) that need addressing before implementation
+When all reviews pass and audit clears (or is skipped for small plans):
+
+1. **Shutdown the planner:**
+   ```
+   SendMessage({ type: "shutdown_request", recipient: "planner-1" })
+   ```
+
+2. **Shutdown all active validators** (any still running from review batches):
+   ```
+   SendMessage({ type: "shutdown_request", recipient: "reviewer-plan" })
+   SendMessage({ type: "shutdown_request", recipient: "reviewer-phase-01" })
+   // ... repeat for all active reviewers
+   ```
+
+3. **Delete team:** `TeamDelete()`
+
+4. **Report summary to user:**
+
+   1. **Folder location:** `plans/{YYMMDD}-{feature-name}/`
+   2. **Files created:**
+      - plan.md
+      - phase-01-*.md through phase-NN-*.md
+      - reviews/planning/ folder with review files
+   3. **Review status:**
+      - Plan.md: template score (X/11)
+      - Each phase: template score (X/12) + codebase score (N issues by severity)
+      - Flow audit (3+ phases): overall assessment + Critical/High issue count
+   4. **Overall verdict:** Ready/Not Ready for implementation
+   5. **Critical issues** (if any) that need addressing before implementation
+
+---
+
+## Concurrency Limits
+
+| Constraint | Limit | Why |
+|-----------|-------|-----|
+| Planners | 1 | Only one plan is created at a time |
+| Validators per batch | Max 4 | Context pressure from parallel results |
+| **Total active agents** | **Max 5** | 1 planner + 4 validators (planner may still be active during reviews for fix routing) |
+| Batch overlap | **None** | Wait for current batch to fully complete before spawning next |
+
+---
 
 ## Resuming After Context Compact
 
@@ -322,40 +330,32 @@ If you notice context was compacted or you're unsure of current progress:
 1. Run `TaskList` to see all tasks and their status
 2. Find the `in_progress` task — that's where you were
 3. Run `TaskGet {id}` on that task to read full details
-4. Continue from that task — don't restart from the beginning
+4. Read plan.md to get the Phase Table for broader context
+5. Check if team exists: read `~/.claude/teams/{feature-name}-planning/config.json`
+   - If team exists, teammates are still active — coordinate via messages
+   - If no team, re-create it (Step 2)
+6. Continue from the in_progress step — don't restart from Step 1
 
-Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
-
-**Pattern for every work session:**
+**Pattern for every work cycle:**
 ```
 TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
 
-## Troubleshooting
+Tasks are the orchestrator's source of truth for progress — not memory, not plan.md alone.
 
-### Context Window Overflow
+---
 
-**Symptom:** Agent loses track of phases mid-creation, produces incomplete or inconsistent output.
+## Error Breakout Conditions
 
-**Cause:** Too many phases being created without task tracking, or review agents spawned without batching.
+STOP and shut down if:
+- Validator FAIL repeats 3+ times on the same file
+- Planner cannot resolve Critical review issues
+- User requests cancellation
+- Context window approaching limit with no clear path forward
 
-**Fix:** Follow Task List pattern in Step 4 — mark tasks complete as you go. For reviews, batch agents in groups of 4 per the [Delegation Guide](references/delegation-guide.md).
+Do not continue when blocked. Shut down and let the user decide.
 
-### Missing Template Sections
-
-**Symptom:** Review agents flag missing sections in plan.md or phase files.
-
-**Cause:** Template not read before writing, or sections skipped during creation.
-
-**Fix:** Re-read the template (`references/PLAN-TEMPLATE.md` or `references/PHASE-TEMPLATE.md`) and add the missing sections. Each section exists because omitting it caused implementation problems.
-
-### Agent Delegation Failures
-
-**Symptom:** Review agents skip the `/review-plan` skill invocation or produce superficial reviews.
-
-**Cause:** Vague delegation prompts that don't specify the skill to invoke or what success looks like.
-
-**Fix:** Use the exact prompt templates from [Delegation Guide](references/delegation-guide.md). Include both the imperative command AND explanation of what the review entails.
+---
 
 ## Patterns That Prevent User-Reported Failures
 
@@ -363,18 +363,46 @@ The user experienced each of these failures. Understanding the harm helps you av
 
 | Pattern to Avoid | Harm When Ignored |
 |------------------|-------------------|
+| Skipping requirements clarification | Wrong plan built on false premises, hours of wasted effort |
+| Spawning planner without user checkpoint | User discovers wrong assumptions after all phases are written |
 | Writing code blocks without reading codebase | Phases contain wrong patterns, caught late during implementation |
 | Large multi-concern phases | Phases exceed context window, work gets lost mid-implementation |
-| Skipping template sections | The user created templates so requirements aren't re-explained each time |
-| Assuming instead of asking | Wrong plan built on false premises, hours of wasted effort |
 | Self-reviewing the plan | Blind spots missed; `/review-plan` catches template AND codebase deviations |
-| Vague delegation prompts | Agents misinterpret and skip skill invocation |
+| Vague delegation prompts | Validators misinterpret and skip skill invocation |
 | Folder without date prefix | Folders become unsorted chronologically |
 | Skipping TaskList check | Duplicates tasks if resuming after context compact |
+| Too many concurrent validators | Context window blowout from result flooding |
 
 ## Template Locations
 
 - Plan: `references/PLAN-TEMPLATE.md`
 - Phase: `references/PHASE-TEMPLATE.md`
+- Delegation Guide: `references/delegation-guide.md`
 
-These templates are auto-loaded into your context from the skill's `references/` folder. Match them section-by-section.
+These templates are auto-loaded into the planner's context via the `planner-workflow` skill. The orchestrator references them when spawning validators.
+
+## Troubleshooting
+
+### Planner Not Responding to Messages
+
+**Symptom:** Sent a message to planner-1 but no response.
+
+**Cause:** Planner may be idle (normal — waiting for your message to wake it), or context was compacted.
+
+**Fix:** Idle is normal. Send the message and wait. If no response after the planner processes, check if the planner's context was compacted (the system will notify you). If so, spawn a fresh planner with the current state.
+
+### Validators Skip Skill Invocation
+
+**Symptom:** Review files are superficial, missing template or codebase checks.
+
+**Cause:** Vague delegation prompt that doesn't make skill invocation imperative.
+
+**Fix:** Use the exact prompt templates from Step 6. Include both the imperative command AND explanation of what the review entails.
+
+### Context Window Overflow During Reviews
+
+**Symptom:** Orchestrator loses track of review results or produces garbage summaries.
+
+**Cause:** Too many validators spawned at once, or results not summarised between batches.
+
+**Fix:** Follow batching rules in Step 6 — max 4 concurrent, summarise between batches. Use `run_in_background: true` and `TaskOutput` with `block: true`.
