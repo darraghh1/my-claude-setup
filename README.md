@@ -55,8 +55,8 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | Category | Count | Purpose |
 |----------|-------|---------|
 | **Hooks** | 11 Python scripts | Automated quality gates, logging, security blocks, context injection |
-| **Skills** | 25 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
-| **Agents** | 8 agent definitions | Specialized sub-agents for architecture, review, testing, building, planning |
+| **Skills** | 27 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
+| **Agents** | 9 agent definitions | Specialized sub-agents for architecture, review, testing, building, auditing, planning |
 | **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
 | **Rules** | 15 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
@@ -69,8 +69,10 @@ This setup's primary value is a **structured development pipeline** — from fea
 ### The Pipeline
 
 <picture>
-  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with its builder-validator loop" src="docs/pipeline.png" width="950">
+  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with group-based auditing" src="docs/pipeline.png" width="950">
 </picture>
+
+`/implement` now processes phases in **groups** — connected phases that build the same feature area. After each group's phases pass the build/validate cycle, an auditor automatically reviews the group for cross-phase regressions, deferred items, plan drift, and system integrity. Medium/Low issues are auto-fixed; High/Critical issues checkpoint with the user. This catches drift incrementally rather than discovering it after 20 phases.
 
 ### Atomic Phases
 
@@ -93,15 +95,16 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 | Pipeline | Orchestrator | Ephemeral Agents | Communication |
 |----------|-------------|-----------------|---------------|
 | **Planning** (`/create-plan`) | Clarifies requirements, relays checkpoints to user, spawns validators | Planner (creates plan.md + phases), Validators (run `/review-plan`) | Checkpoints: planner reports plan summary and phase completion for user approval |
-| **Implementation** (`/implement`) | Finds phases, runs gate checks, routes PASS/FAIL | Builder (implements one phase), Validator (runs `/code-review`) | Builder reports completion → validator reviews → orchestrator routes verdict |
+| **Implementation** (`/implement`) | Processes groups sequentially, gate checks, routes verdicts, triages audit findings | Builder (implements one phase), Validator (runs `/code-review`), Auditor (cross-phase group review) | Builder → Validator → (per group) Auditor → orchestrator triages findings |
 
 #### Implementation Team (`/implement`)
 
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
-| **Orchestrator** | Entire plan | Finds phases, runs gate checks, spawns/shuts down teammates, routes PASS/FAIL verdicts |
+| **Orchestrator** | Entire plan | Processes groups sequentially, gate checks phases, spawns/shuts down agents, routes build/validate verdicts, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user) |
 | **Builder** | One phase (ephemeral) | Full phase implementation — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
-| **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests). Reports PASS/FAIL to orchestrator. |
+| **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator. |
+| **Auditor** | One group (ephemeral) | Cross-phase analysis after a group completes — checks regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator. |
 
 #### Planning Team (`/create-plan`)
 
@@ -113,7 +116,7 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 
 **Why agents are ephemeral:** Each task gets a fresh agent with a clean 200K context window. After the work cycle completes, agents are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
 
-**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator/planner agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
+**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator/auditor/planner agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
 
 The `/implement` orchestrator uses a **batch processing model** with strict concurrency limits:
 
@@ -133,9 +136,9 @@ Quality is enforced at four layers during each phase, in order:
 | Layer | When | What Runs | Catches |
 |-------|------|-----------|---------|
 | **Global PostToolUse hook** | Every Write/Edit on TS files | `post_tool_use.py` (7 regex checks) | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse |
-| **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` | Test failures, type errors |
+| **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Test failures, type errors, E2E regressions, DB test failures |
 | **Validator `/code-review`** | After builder reports done | 451-line checklist, codebase-grounded, auto-fix (independent agent) | Pattern deviations, security issues, missing auth checks |
-| **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` | Issues introduced by auto-fixes |
+| **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Issues introduced by auto-fixes, E2E regressions, DB test failures |
 
 The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification.
 
@@ -264,13 +267,14 @@ Optional:
 
 ```text
 .claude/
-├── agents/                         # 8 agent definitions
+├── agents/                         # 9 agent definitions
 │   ├── architect.md                # Architecture design and trade-off analysis
 │   ├── code-quality-reviewer.md    # Code quality and pattern compliance
 │   ├── doc-updater.md              # Documentation maintenance
 │   ├── security-reviewer.md        # Security vulnerability detection
 │   ├── tdd-guide.md                # Test-Driven Development specialist
 │   └── team/
+│       ├── auditor.md              # Read-only group auditor (cross-phase analysis)
 │       ├── builder.md              # Focused implementation agent
 │       ├── planner.md              # Ephemeral planning agent
 │       └── validator.md            # Task verification and auto-fix agent
@@ -313,7 +317,8 @@ Optional:
 │   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
 │   ├── testing.md                  # Vitest, mocking, TDD workflow
 │   └── ui-components.md            # Component library usage guidelines
-├── skills/                         # 25 skill directories (each with SKILL.md)
+├── skills/                         # 27 skill directories (each with SKILL.md)
+│   ├── auditor-workflow/
 │   ├── audit-plan/
 │   ├── builder-workflow/
 │   ├── cache-audit/
@@ -335,6 +340,7 @@ Optional:
 │   ├── server-action-builder/
 │   ├── service-builder/
 │   ├── tavily-mcp/
+│   ├── validator-workflow/
 │   ├── vercel-composition-patterns/
 │   ├── vercel-react-best-practices/
 │   ├── vercel-react-native-skills/
@@ -365,7 +371,7 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **PostToolUseFailure** | `post_tool_use_failure.py` | After a tool call fails | Pattern-matches error messages and injects actionable guidance (e.g., "Read file before Edit", "Don't retry denied commands"). |
 | **Notification** | `notification.py` | When Claude needs input | Plays a sound for permission prompts and elicitation dialogs. Ignores idle/auth events. |
 | **Stop** | `stop.py` | When Claude stops | Exports JSONL transcript to `chat.json`. Plays completion sound. |
-| **SubagentStart** | `subagent_start.py` | When a sub-agent launches | Tiered context injection: builder/validator agents get full rule files (read fresh from disk) + skill registry (~9.5K tokens); all other agents get a condensed 11-bullet summary (~180 tokens). Only fresh injection point — everything else is stale parent cache. |
+| **SubagentStart** | `subagent_start.py` | When a sub-agent launches | Tiered context injection: builder/validator/auditor agents get full rule files (read fresh from disk) + skill registry (~9.5K tokens); all other agents get a condensed 11-bullet summary (~180 tokens). Only fresh injection point — everything else is stale parent cache. |
 | **SubagentStop** | `subagent_stop.py` | When a sub-agent finishes | Logs sub-agent completion with agent type and transcript path. |
 | **PreCompact** | `pre_compact.py` | Before context compaction | Logs compaction events. Optionally backs up the transcript before compression. |
 | **UserPromptSubmit** | `user_prompt_submit.py` | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display. |
@@ -532,11 +538,12 @@ Agents are specialized sub-agents that can be delegated tasks via the `Task` too
 | **security-reviewer** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Security vulnerability detection: RLS validation, secrets scanning, admin client misuse, OWASP Top 10 checks. |
 | **tdd-guide** | Sonnet | Read, Write, Edit, Bash, Grep | Test-Driven Development specialist using Vitest with happy-dom. Guides RED-GREEN-REFACTOR workflow. |
 | **doc-updater** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Documentation maintenance. Updates CLAUDE.md, architecture maps, and feature documentation. |
+| **auditor** | Opus | Read, Grep, Glob, Bash, Task tools, SendMessage | Read-only group auditor. Reviews connected phases for cross-phase regressions, deferred items, plan drift, and system integrity. Reports severity-rated findings to orchestrator. |
 | **builder** | Opus | Full tool access | Focused implementation agent. Executes one task at a time, supports skill invocation, follows project patterns. |
 | **planner** | Opus | Full tool access | Ephemeral planning agent. Creates plan.md + phase files grounded in codebase patterns. Reports at checkpoints for user course-correction. |
-| **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests. Reports PASS/FAIL to orchestrator. |
+| **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation via `validator-workflow` skill. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests + conditional E2E/DB. Reports PASS/FAIL to orchestrator. |
 
-The `builder`, `planner`, and `validator` agents are designed for team workflows where an orchestrator skill coordinates multiple ephemeral agents. All run in `bypassPermissions` mode for autonomous operation — quality is enforced by the global PostToolUse hook, self-verification steps, and independent validator review cycles, not by permission prompts.
+The `auditor`, `builder`, `planner`, and `validator` agents are designed for team workflows where an orchestrator skill coordinates multiple ephemeral agents. All run in `bypassPermissions` mode for autonomous operation — quality is enforced by the global PostToolUse hook, self-verification steps, and independent validator review cycles, not by permission prompts.
 
 ---
 
@@ -800,7 +807,7 @@ This setup is designed to maximise prompt cache hit rates. The Anthropic API cac
 | **Hooks inject via `additionalContext`** | Dynamic data (git status, quality warnings, subagent rules) goes into `<system-reminder>` messages, not the prefix. The prefix stays stable. |
 | **Static CLAUDE.md and rules** | No timestamps, git refs, or session-specific data in any prefix file. All 15 rule files are pure instructions. |
 | **Fixed MCP tool set** | 5 MCP servers configured at session start, no conditional loading. Tool schemas are stable between turns. |
-| **Model delegation via subagents** | Agents use different models (Sonnet for reviewers, Opus for builders) but each runs in a separate conversation. The parent's cache is never broken by model switches. |
+| **Model delegation via subagents** | Agents use different models (Sonnet for reviewers, Opus for builders/auditors) but each runs in a separate conversation. The parent's cache is never broken by model switches. |
 | **Minimal per-turn injection** | SessionStart injects ~50 chars (git branch). UserPromptSubmit injects nothing. Per-turn overhead is < 500 chars. |
 | **Two-layer rules without duplication** | User-level rules (the WHAT) + project-level `project-implementation.md` (the HOW). No duplicate filenames across levels means no wasted tokens from additive loading. |
 

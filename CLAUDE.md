@@ -44,7 +44,19 @@ Examples:
 
 ## Commands
 
-<!-- CUSTOMIZE: Add your project's dev, build, test, and lint commands here. -->
+<!-- CUSTOMIZE: Add your project's dev, build, test, and lint commands here.
+
+The builder-workflow and validator-workflow skills use the following standardised command names.
+Omit scripts you don't need — they're skipped automatically when not configured.
+
+| Command | Purpose |
+|---------|---------|
+| `pnpm test` | Unit tests (Vitest) |
+| `pnpm test:e2e` | E2E tests (Playwright) — run for frontend phases |
+| `pnpm test:db` | Database tests (PgTAP) — run for database phases |
+| `pnpm run typecheck` | Type checking (`tsc --noEmit`) |
+| `pnpm verify` | Full verification gate (typecheck + lint + test) |
+-->
 
 ## Architecture
 

@@ -12,7 +12,7 @@ or MCP tools. This hook compensates by injecting context at spawn time
 (the only fresh injection point — everything else is stale parent cache).
 
 Context injection is tiered by agent type:
-- builder/validator: Full rule files (read from disk) + skill registry
+- builder/validator/auditor: Full rule files (read from disk) + skill registry
 - All others: Condensed bullet-list summary
 
 See docs/teams-research.md for the full context injection analysis.
@@ -24,8 +24,8 @@ import sys
 from utils.constants import ensure_session_log_dir
 
 # Agent types that get full rule injection.
-# These do real implementation work where rule compliance prevents tech debt.
-IMPLEMENTATION_AGENTS = {"builder", "validator"}
+# These do real implementation/audit work where rule compliance prevents tech debt.
+IMPLEMENTATION_AGENTS = {"builder", "validator", "auditor"}
 
 # Rule files to skip for implementation agents.
 # git-workflow: builders don't commit. mcp-tools: builders don't have MCP tools.
@@ -46,6 +46,7 @@ PROJECT RULES (injected by SubagentStart hook — subagents don't inherit CLAUDE
 - Interfaces over types for object shapes; export all types
 - Prefer single state object over multiple useState calls
 - Import order: React > third-party > internal packages > local
+- Fix ALL test and typecheck failures before marking work complete — "pre-existing" is not an excuse. You own every failure present when you report done.
 """
 
 SKILL_REGISTRY = """\
@@ -149,7 +150,7 @@ def main():
             json.dump(log_data, f, indent=2)
 
         # --- Context injection ---
-        # Builder/validator agents get full rules (read from disk) + skill registry.
+        # Builder/validator/auditor agents get full rules (read from disk) + skill registry.
         # All other agents get the condensed bullet list.
         if is_impl_agent:
             context = build_implementation_context()

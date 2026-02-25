@@ -87,6 +87,14 @@ Follow your preloaded planner-workflow skill. It teaches you how to:
 5. Wait for feedback, then create all phase files
 6. Report checkpoint 2 to team-lead (completion summary)
 
+GROUPING (critical for implementation auditing):
+- Connected phases that build the same feature/component MUST share a group: name
+- Set group: in each phase's frontmatter (e.g., group: "auth-system")
+- Include a Group Summary table in plan.md showing groups, their phases, and descriptions
+- Order groups so dependencies flow top-to-bottom (group A before group B if B needs A)
+- Single-phase groups are valid for standalone work
+- Groups define audit boundaries — after all phases in a group complete, an auditor reviews them together
+
 IMPORTANT: Before using Write on existing files, Read first or it silently fails. Prefer Edit for modifications.`
 })
 ```

@@ -1,6 +1,4 @@
-<mxfile host="embed.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.5.1">
-  <diagram id="i6WMsej-z_FpHDw56HzO" name="Page-1">
-    <mxGraphModel dx="2276" dy="725" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+<mxGraphModel dx="2276" dy="725" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -20,8 +18,7 @@
         <mxCell id="p-selfval" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#d946ef;fontColor=#a21caf;fontSize=12;fontStyle=1;shadow=1;" value="Self-validate each phase" vertex="1">
           <mxGeometry height="30" width="280" x="75" y="224" as="geometry" />
         </mxCell>
-        <mxCell id="p-checkpoint" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#1e40af;fontSize=11;fontStyle=1;" value="User
-Checkpoint" vertex="1">
+        <mxCell id="p-checkpoint" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#1e40af;fontSize=11;fontStyle=1;" value="User&#xa;Checkpoint" vertex="1">
           <mxGeometry height="56" width="130" x="150" y="330" as="geometry" />
         </mxCell>
         <mxCell id="p-val-group" parent="1" style="rounded=1;fillColor=#f0fdf4;gradientColor=#dcfce7;gradientDirection=south;strokeColor=#4ade80;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#15803d;verticalAlign=top;dashed=1;" value="Validators (batched, ephemeral)" vertex="1">
@@ -33,8 +30,7 @@ Checkpoint" vertex="1">
         <mxCell id="p-passes" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=11;fontStyle=1;" value="Passes?" vertex="1">
           <mxGeometry height="50" width="120" x="155" y="570" as="geometry" />
         </mxCell>
-        <mxCell id="p-audit" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#2563eb;fontSize=12;fontStyle=1;shadow=1;" value="/audit-plan
-(3+ phases)" vertex="1">
+        <mxCell id="p-audit" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#3b82f6;fontColor=#2563eb;fontSize=12;fontStyle=1;shadow=1;" value="/audit-plan&#xa;(3+ phases)" vertex="1">
           <mxGeometry height="40" width="240" x="95" y="670" as="geometry" />
         </mxCell>
         <mxCell id="p-ready" parent="1" style="rounded=1;arcSize=50;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=13;fontStyle=1;shadow=1;" value="Plan Ready" vertex="1">
@@ -89,7 +85,7 @@ Checkpoint" vertex="1">
         <mxCell id="i-tdd" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="TDD first, then implement" vertex="1">
           <mxGeometry height="30" width="242" x="539" y="354" as="geometry" />
         </mxCell>
-        <mxCell id="i-build-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck" vertex="1">
+        <mxCell id="i-build-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck + E2E/DB" vertex="1">
           <mxGeometry height="30" width="242" x="539" y="396" as="geometry" />
         </mxCell>
         <mxCell id="val-group" parent="1" style="rounded=1;fillColor=#f0fdf4;gradientColor=#dcfce7;gradientDirection=south;strokeColor=#4ade80;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#15803d;verticalAlign=top;dashed=1;" value="Validator (ephemeral, per phase)" vertex="1">
@@ -98,7 +94,7 @@ Checkpoint" vertex="1">
         <mxCell id="i-codereview" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="/code-review + auto-fix" vertex="1">
           <mxGeometry height="30" width="242" x="539" y="504" as="geometry" />
         </mxCell>
-        <mxCell id="i-val-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck" vertex="1">
+        <mxCell id="i-val-test" parent="1" style="rounded=1;fillColor=#ffffff;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="tests + typecheck + E2E/DB" vertex="1">
           <mxGeometry height="30" width="242" x="539" y="546" as="geometry" />
         </mxCell>
         <mxCell id="i-result" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=11;" value="Result" vertex="1">
@@ -162,5 +158,3 @@ Checkpoint" vertex="1">
         </mxCell>
       </root>
     </mxGraphModel>
-  </diagram>
-</mxfile>

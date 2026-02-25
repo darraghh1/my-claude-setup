@@ -60,6 +60,14 @@ const mockChain = {
 };
 ```
 
+## Failure Ownership
+
+**You own every failure present when you report completion — no exceptions.**
+
+"These failures were pre-existing" is not a valid reason to ship. It doesn't matter whether you caused a failure or it existed before you started. If `pnpm test` or `pnpm run typecheck` is non-zero when you're done, fix it before marking the task complete.
+
+This applies after context compacts too. A compact doesn't reset your responsibility for the test suite state.
+
 ## Running Tests
 
 ```bash

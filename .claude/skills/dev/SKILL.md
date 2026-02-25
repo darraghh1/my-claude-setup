@@ -1,22 +1,18 @@
 ---
 name: dev
-description: "Ad-hoc development workflow. Routes to domain skills (postgres-expert, server-action-builder, react-form-builder, service-builder, playwright-e2e), enforces task tracking, and follows a reference-grounded build-test-verify loop."
+description: "Ad-hoc development workflow for implementing features, fixing bugs, and making code changes outside a formal plan. Use when asked to implement, add, fix, build, or create something in the codebase. Routes to domain skills (postgres-expert, server-action-builder, react-form-builder, service-builder, playwright-e2e), enforces task tracking for context-compact recovery, and follows a reference-grounded build-test-verify loop. Do NOT use for large multi-phase features — use /create-plan + /implement instead."
 argument-hint: "[task description]"
-context: fork
 agent: general-purpose
 model: sonnet
+compatibility: "Claude Code only. Requires Task, Skill, TaskCreate, TaskUpdate, TaskList, and TaskGet tools."
 allowed-tools: "Read Write Edit Grep Glob Bash Skill Task TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
-  version: 1.0.0
+  version: 1.1.0
 ---
-
-<!-- ultrathink: Enable extended thinking for implementation work -->
 
 # Dev
 
 **YOUR TASK: `$ARGUMENTS`**
-
-**Do NOT ask the user to re-describe the task. Parse the arguments above and start working.**
 
 ## Critical
 
@@ -31,6 +27,7 @@ metadata:
 Tasks survive context compacts — skipping this check causes lost progress and repeated work.
 
 **Before starting work, run `TaskList`** to check if tasks already exist from a previous session or before a compact. If tasks exist:
+
 1. Read existing tasks with `TaskGet` for each task ID
 2. Find the first task with status `pending` or `in_progress`
 3. Resume from that task — do NOT recreate the task list
@@ -46,6 +43,7 @@ Mark each task `in_progress` when starting and `completed` when done.
 Read any files the user referenced or that are clearly relevant. If the task mentions an existing file, read it. If it mentions a feature area, Glob for related files.
 
 Extract:
+
 - **What needs to change** — new files, modified files, or both
 - **What domain(s) are involved** — database, server actions, services, UI, forms, tests
 - **What already exists** — don't rebuild what's already there
@@ -61,6 +59,7 @@ TaskCreate({ subject: "...", description: "...", activeForm: "..." })
 **Task descriptions must be self-contained** — include file paths, function signatures, and acceptance criteria. If your context gets compacted, the task description is all you'll have.
 
 **Order tasks by dependency:**
+
 1. Schema/database changes first (if any)
 2. Service layer
 3. Server actions
@@ -72,23 +71,26 @@ TaskCreate({ subject: "...", description: "...", activeForm: "..." })
 
 For each task, determine the right domain skill and find a reference implementation:
 
-| Work Type | Domain Skill | Reference Glob |
-|-----------|-------------|----------------|
-| Database schema, migrations, RLS policies | `/postgres-expert` | `supabase/migrations/*.sql` |
-| Service layer (business logic, CRUD) | `/service-builder` | `app/home/[account]/**/*service*.ts` |
-| Server actions (mutations, auth + Zod) | `/server-action-builder` | `app/home/[account]/**/*server-actions*.ts` |
-| React forms with validation | `/react-form-builder` | `app/home/[account]/**/_components/*.tsx` |
-| React components, pages, layouts | `/vercel-react-best-practices` | `app/home/[account]/**/_components/*.tsx` |
-| E2E tests | `/playwright-e2e` | `e2e/tests/**/*.spec.ts` |
-| UI/UX review | `/web-design-guidelines` | N/A (guideline check, not reference-based) |
+| Work Type                                 | Domain Skill                   | Reference Glob                              |
+| ----------------------------------------- | ------------------------------ | ------------------------------------------- |
+| Database schema, migrations, RLS policies | `/postgres-expert`             | `supabase/migrations/*.sql`                 |
+| Service layer (business logic, CRUD)      | `/service-builder`             | `app/home/[account]/**/*service*.ts`        |
+| Server actions (mutations, auth + Zod)    | `/server-action-builder`       | `app/home/[account]/**/*server-actions*.ts` |
+| React forms with validation               | `/react-form-builder`          | `app/home/[account]/**/_components/*.tsx`   |
+| React components, pages, layouts          | `/vercel-react-best-practices` | `app/home/[account]/**/_components/*.tsx`   |
+| E2E tests                                 | `/playwright-e2e`              | `e2e/tests/**/*.spec.ts`                    |
+| UI/UX review                              | `/web-design-guidelines`       | N/A (guideline check, not reference-based)  |
 
 **For each domain involved:**
+
 1. **Glob** the reference pattern — read ONE file of the matching type
 2. **Extract key patterns**: function signatures, imports, naming, error handling
 3. **Invoke the domain skill** before implementing that type of work:
+
    ```
    Skill({ skill: "postgres-expert" })
    ```
+
    The skill loads project-specific conventions. Follow them.
 
 **Reference is ground truth.** If the codebase does something differently from what you'd expect, match the codebase.
@@ -105,12 +107,14 @@ Work through your task list sequentially. For each task:
 6. `TaskUpdate` — mark `completed`
 
 **Key project patterns to follow:**
+
 - Server actions: validate with Zod, verify auth before processing
 - Services: `createXxxService(client)` factory wrapping private class, `import 'server-only'`
 - Imports: path aliases, ordering: React > third-party > internal > local
 - After mutations: `revalidatePath('/home/[account]/...')`
 
 **Scope boundary — implement ONLY what was asked:**
+
 - Do NOT add improvements not specified in the task
 - Do NOT refactor adjacent code
 - Do NOT create documentation files
@@ -139,6 +143,8 @@ Report what was done:
 - **Verification result** (tests passing, typecheck clean)
 - **Anything left for the user** (manual steps, env vars to set, etc.)
 
+---
+
 ## Resuming After Context Compact
 
 If you notice context was compacted or you're unsure of current progress:
@@ -151,9 +157,12 @@ If you notice context was compacted or you're unsure of current progress:
 Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
 
 **Pattern for every work session:**
+
 ```
-TaskList -> find in_progress or first pending -> TaskGet -> continue work -> TaskUpdate (completed) -> next task
+TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
+
+---
 
 ## Troubleshooting
 

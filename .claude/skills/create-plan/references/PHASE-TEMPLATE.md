@@ -3,6 +3,7 @@ title: "Phase NN: [Title]"
 description: "[One sentence goal]"
 skill: "[postgres-expert | server-action-builder | service-builder | react-form-builder | playwright-e2e | vercel-react-best-practices | web-design-guidelines | none]"
 status: pending
+group: "[group-name — identifies connected phases audited together, e.g. auth-system, dashboard-ui, data-pipeline]"
 dependencies: []
 tags: [phase, implementation]
 created: YYYY-MM-DD
@@ -14,6 +15,13 @@ PHASE SIZE CONSTRAINTS:
 - Target: 10-15KB file max
 - If getting large, split into multiple phases
 - Each phase = single implementation session
+
+GROUP FIELD:
+- Connected phases share a group name (e.g. "auth-system", "dashboard-ui")
+- Groups define audit boundaries — all phases in a group are reviewed together after completion
+- A phase belongs to exactly one group
+- Single-phase groups are valid for standalone work
+- Group ordering determines the implementation sequence: group A before group B if B depends on A
 -->
 
 # Phase [NN]: [Title]

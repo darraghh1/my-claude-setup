@@ -6,25 +6,38 @@ How the planning skills work together as an assembly line — from feature idea 
 
 ```
 /create-plan → /review-plan → /audit-plan → /implement → done
-                                                      │
-                                                      ├── gate: plan review verdict
-                                                      ├── gate: flow audit exists
-                                                      ├── gate: phase review + skeleton check
-                                  │
-                                  └── per unblocked phase (parallel, max 2-3):
-                                      spawn builder ──→ builder-workflow
-                                           │              ├── find reference
-                                           │              ├── invoke domain skill
-                                           │              ├── TDD → implement → test
-                                           │              ├── tests + typecheck
-                                           │              └── report completion
-                                           │
-                                      orchestrator ──→ validator
-                                           │              ├── /code-review + auto-fix
-                                           │              ├── tests + typecheck
-                                           │              └── PASS / FAIL verdict
-                                           │
-                                      PASS → check unblocked / FAIL → fresh builder
+                                                │
+                                                ├── gate: plan review + flow audit
+                                                │
+                                                └── for each group (sequential):
+                                                    │
+                                                    ├── build phases (parallel where deps allow, max 2):
+                                                    │   spawn builder ──→ builder-workflow
+                                                    │        │              ├── find reference
+                                                    │        │              ├── invoke domain skill
+                                                    │        │              ├── TDD → implement → test
+                                                    │        │              └── report completion
+                                                    │        │
+                                                    │   orchestrator ──→ validator
+                                                    │        │              ├── validator-workflow
+                                                    │        │              ├── /code-review + auto-fix
+                                                    │        │              ├── tests + typecheck + E2E/DB
+                                                    │        │              └── PASS / FAIL verdict
+                                                    │        │
+                                                    │   PASS → next phase / FAIL → fresh builder
+                                                    │
+                                                    ├── all group phases done → spawn auditor
+                                                    │   auditor ──→ auditor-workflow
+                                                    │        ├── cross-phase regressions
+                                                    │        ├── deferred items check
+                                                    │        ├── tests + typecheck
+                                                    │        ├── plan vs reality
+                                                    │        └── severity-rated report
+                                                    │
+                                                    └── orchestrator triages:
+                                                        ├── Clean/Low → continue to next group
+                                                        ├── Medium → auto-fix (builder + validator)
+                                                        └── High/Critical → ask user
 
 /audit-plan (runs during /create-plan Step 10 for 3+ phase plans)
 ```
@@ -220,7 +233,7 @@ Each phase gets a fresh builder and validator, each with a clean 200K context wi
 | 3. Find reference + skill | Glob for reference file, invoke domain skill | Ground truth for patterns — not guessing |
 | 4. Create task list | `TaskCreate` for each implementation step | Tasks survive context compacts within a phase |
 | 5. Implement | TDD (Step 0) first, then remaining steps | Untested code ships bugs |
-| 6. Final verification | `pnpm test` + `pnpm run typecheck` | Both must pass before reporting |
+| 6. Final verification | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | All must pass before reporting |
 | 7. Report completion | `SendMessage` to orchestrator | Triggers independent validator review |
 
 ### Domain skill mapping
@@ -244,7 +257,38 @@ If a builder's context is compacted mid-phase (rare with fresh 200K windows):
 
 ---
 
-## 5. `/code-review` — The Final Gate
+## 5. `/validator-workflow` — The Validator's Playbook
+
+**Files:** `SKILL.md` (130+ lines) — preloaded into validator agents via `skills: [validator-workflow]` in agent config
+
+**What it does:** Teaches validators how to handle validation end-to-end. Not user-invocable — it activates automatically when a validator is spawned.
+
+### The 6-step workflow
+
+| Step | What Happens | Why It Exists |
+|------|-------------|---------------|
+| 1. Read phase | Extract `skill:` field, acceptance criteria, files modified | Determines which extra tests to run |
+| 2. Run /code-review | Invoke `/code-review` skill (reference-grounded, auto-fix) | Builder never reviews its own code |
+| 3. Run verification | `pnpm test` + `pnpm run typecheck` + conditional E2E/DB | Catches issues from auto-fixes and phase-type-specific regressions |
+| 4. Determine verdict | PASS/FAIL based on review + verification | Clear signal to orchestrator |
+| 5. Report to orchestrator | `SendMessage` with verdict + E2E/DB status | Orchestrator routes next action |
+| 6. Go idle | Wait for next assignment or shutdown | Ephemeral lifecycle |
+
+### Conditional testing by phase type
+
+The phase's `skill:` frontmatter field routes to additional test commands:
+
+| Phase Skill | Extra Test | Command |
+|-------------|-----------|---------|
+| Frontend skills (`react-form-builder`, `vercel-react-best-practices`, etc.) | E2E tests | `pnpm test:e2e` (scoped to feature) |
+| `postgres-expert` | DB tests | `pnpm test:db` |
+| Backend skills (`server-action-builder`, `service-builder`) | Unit tests sufficient | — |
+
+E2E tests are scoped by extracting keywords from the phase title and globbing for matching spec files. Commands that don't exist are skipped gracefully.
+
+---
+
+## 6. `/code-review` — The Final Gate
 
 **Files:** `SKILL.md` (278 lines) + `checklist.md` (451 lines) + `delegation.md` + `references/CODE-REVIEW-TEMPLATE.md` + `scripts/validate_review.py`
 
@@ -290,7 +334,7 @@ Output goes to `reviews/code/phase-NN.md` (separate from planning reviews in `re
 
 ---
 
-## 6. `/audit-plan` — The Holistic Check
+## 7. `/audit-plan` — The Holistic Check
 
 **Files:** `SKILL.md` (318 lines)
 
@@ -325,59 +369,128 @@ The `/create-plan` skill runs `/audit-plan` as Step 10 for plans with 3+ phases.
 
 ---
 
+## 8. Group Auditing — The Incremental Post-Mortem
+
+**Files:** `auditor-workflow/SKILL.md` (internal, preloaded into auditor agent) + `agents/team/auditor.md`
+
+**What it does:** After each group of connected phases completes the build/validate cycle, an auditor reviews the group for problems that per-phase reviews structurally cannot catch. This happens incrementally — audit after each group, not after the whole plan — so drift is caught early while it's still cheap to fix.
+
+### How it differs from other review steps
+
+| Step | When | Scope | Focus |
+|------|------|-------|-------|
+| `/review-plan` | Before implementation | One file at a time | Template + codebase compliance |
+| `/audit-plan` | Before implementation | All phases together | Dependencies, data flow, ordering |
+| `/code-review` | During implementation | One phase's files | Code quality, security, patterns |
+| **Group audit** | **After each group completes** | **Connected phases** | Cross-phase regressions, deferred items, plan drift |
+
+### What the auditor checks
+
+| Step | What Happens | Why It Exists |
+|------|-------------|---------------|
+| 1. Read group | Build inventory of group's phases with acceptance criteria | Baseline for comparison |
+| 2. Collect reviews | Read `reviews/code/phase-*.md` for group phases | Aggregate quality data |
+| 3. Deferred items | Check each deferred item against current code | #1 source of quality debt — no pipeline step checks these |
+| 4. Cross-phase impact | Find shared files, check git history, verify no overwrites | Per-phase reviews can't see inter-phase regressions |
+| 5. Verification | Run `pnpm test` + `pnpm run typecheck` | Don't trust stale results |
+| 6. Plan vs implementation | Verify acceptance criteria, scope comparison, ADR compliance | "Did we build what we planned?" |
+| 7. Previous groups | Check if this group compounds earlier deviations | Prevents drift from snowballing |
+| 8. Write report | Structured audit at `reviews/implementation/group-{name}-audit.md` | Persistent record |
+| 9. Report to orchestrator | Severity-rated findings via SendMessage | Orchestrator triages |
+
+### How the orchestrator triages
+
+| Finding Severity | Orchestrator Action |
+|-----------------|---------------------|
+| **No issues / Low** | Log deviation summary, continue to next group |
+| **Medium** | Auto-spawn builder to fix + validator to verify. No user input. |
+| **High / Critical** | Checkpoint with user. Present findings, ask for direction. |
+
+### Cross-group deviation tracking
+
+Each auditor receives a summary of previous groups' deviations in its spawn prompt. This creates a chain of awareness — if the "auth-system" group had naming inconsistencies, the "dashboard-ui" auditor specifically checks whether dashboard phases compound that drift.
+
+### Output location
+
+`{plan-folder}/reviews/implementation/group-{name}-audit.md` — one report per group. Lives alongside planning reviews (`reviews/planning/`) and code reviews (`reviews/code/`).
+
+---
+
 ## End-to-End Example
 
 ```
 User: "/create-plan add notes feature"
   ├─ Clarify → AskUserQuestion
-  ├─ Read templates (PLAN-TEMPLATE.md, PHASE-TEMPLATE.md)
-  ├─ Read codebase references (server-actions.ts, service.ts, etc.)
-  ├─ Write plan.md + phase-01.md through phase-05.md
-  ├─ Run validators (no placeholders, TDD ordering, files exist)
-  └─ Spawn review agents in batches of 4
-      └─ Each agent calls: /review-plan plans/250214-notes phase NN
-          ├─ Template compliance (12/12 sections?)
-          ├─ Codebase compliance (code blocks match real patterns?)
-          └─ Auto-fix Critical/High/Medium issues in phase files
+  ├─ Spawn planner agent (Opus, fresh 200K context)
+  │   ├─ Read templates (PLAN-TEMPLATE.md, PHASE-TEMPLATE.md)
+  │   ├─ Read codebase references (server-actions.ts, service.ts, etc.)
+  │   ├─ Write plan.md with Phase Table + Group Summary
+  │   ├─ Checkpoint 1 → orchestrator relays to user for review
+  │   ├─ User approves → create phase-01.md through phase-05.md
+  │   │   Groups: "data-layer" (P01-P02), "api-layer" (P03-P04), "ui-layer" (P05)
+  │   ├─ Self-validate each phase (no placeholders, TDD ordering, files exist)
+  │   └─ Checkpoint 2 → orchestrator relays completion summary
+  ├─ Spawn review agents in batches of 4
+  │   └─ Each agent calls: /review-plan plans/250214-notes phase NN
+  │       ├─ Template compliance (12/12 sections?)
+  │       ├─ Codebase compliance (code blocks match real patterns?)
+  │       └─ Auto-fix Critical/High/Medium issues in phase files
+  └─ Flow audit (/audit-plan) → structural checks pass
 
 User: "/implement plans/250214-notes"
   ├─ Check plan review verdict → must be "Yes"
-  ├─ Check flow audit exists (created by /create-plan Step 10)
+  ├─ Check flow audit → "Coherent" or "Minor Issues"
+  ├─ Parse groups from Phase Table + Group Summary
   │
-  ├─ Scan: Phases 1-3 unblocked (dependencies: []), Phase 4 blocked by Phase 1
-  │   ├─ Gate check each: no placeholders, phase reviews pass
-  │   ├─ TeamCreate + spawn validator (once)
-  │   ├─ Spawn builders in parallel (builder-1, builder-2, builder-3)
-  │   │   ├─ builder-1: Phase 1 → /postgres-expert → TDD → verify → "done"
-  │   │   ├─ builder-2: Phase 2 → /service-builder → TDD → verify → "done"
-  │   │   └─ builder-3: Phase 3 → /server-action-builder → TDD → verify → "done"
-  │   ├─ As each completes → validator reviews → PASS → update plan.md → shutdown builder
-  │   └─ All 3 done → re-scan for newly unblocked phases
+  ├─ GROUP 1: "data-layer" (P01, P02 — no inter-dependencies)
+  │   ├─ Gate check both: no placeholders, phase reviews pass
+  │   ├─ TeamCreate (first run only)
+  │   ├─ Spawn builders in parallel (max 2 per batch)
+  │   │   ├─ builder-1: Phase 01 → /postgres-expert → TDD → verify → "done"
+  │   │   └─ builder-2: Phase 02 → /service-builder → TDD → verify → "done"
+  │   ├─ As each completes → spawn fresh validator → /code-review → PASS
+  │   ├─ All group phases done → shutdown builders + validators
+  │   ├─ Spawn auditor (Opus, runs alone)
+  │   │   ├─ Read both phases + their code reviews
+  │   │   ├─ Cross-phase: notes-service.ts touched by P01 migration + P02 service
+  │   │   ├─ Run tests + typecheck
+  │   │   ├─ Write report → reviews/implementation/group-data-layer-audit.md
+  │   │   └─ Verdict: "No Issues" → continue
+  │   └─ Shutdown auditor → proceed to next group
   │
-  ├─ Scan: Phase 4 now unblocked (Phase 1 done), Phase 5 still blocked
-  │   ├─ Gate check: passes
-  │   ├─ Spawn builder-1 for Phase 4
-  │   ├─ Validator: /code-review → verify → PASS
-  │   ├─ Update plan.md: Phase 4 → Done
-  │   └─ Shutdown builder
+  ├─ GROUP 2: "api-layer" (P03, P04 — P04 depends on P03)
+  │   ├─ Build P03 first → validate → PASS
+  │   ├─ P04 unblocked → build → validate → PASS
+  │   ├─ Spawn auditor (receives data-layer deviation summary)
+  │   │   ├─ Finding: Medium — missing error handling in action (P03:L42)
+  │   │   └─ Report → reviews/implementation/group-api-layer-audit.md
+  │   ├─ Orchestrator triages: Medium → auto-fix
+  │   │   ├─ Spawn builder with fix instructions → validator → PASS
+  │   │   └─ Mark fix task complete
+  │   └─ Shutdown auditor → proceed to next group
   │
-  ├─ ... (repeat: scan → gate → spawn → review → next)
+  ├─ GROUP 3: "ui-layer" (P05 — depends on P03)
+  │   ├─ Build P05 → validate → PASS
+  │   ├─ Spawn auditor (receives data-layer + api-layer deviations)
+  │   │   └─ Verdict: "No Issues"
+  │   └─ Shutdown auditor
   │
-  └─ All phases Done → shutdown validator → TeamDelete → cleanup
+  └─ All groups done → TeamDelete → cleanup → final summary
 ```
 
 ---
 
 ## Quality Layers
 
-Quality checks execute in this order during each phase:
+Quality checks execute in this order during implementation:
 
 | Layer | When | What | Runs On |
 |-------|------|------|---------|
 | 1. PostToolUse hook | Every Write/Edit | `typescript_validator.py` catches TS issues at write time | Builder + Validator |
-| 2. Builder verification | After implementation | `pnpm test` + `pnpm run typecheck` | Builder |
+| 2. Builder verification | After implementation | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Builder |
 | 3. Validator `/code-review` | After builder reports done | 451-line checklist, reference-grounded, auto-fix (independent agent) | Validator |
-| 4. Validator verification | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` | Validator |
+| 4. Validator verification | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Validator |
+| 5. Group audit | After all phases in group pass | Cross-phase regressions, deferred items, plan drift, acceptance criteria | Auditor |
 
 ---
 
@@ -387,13 +500,13 @@ Quality checks execute in this order during each phase:
 
 The orchestrator's context budget stays lean — it only holds plan.md and teammate messages. All heavy lifting (reading references, invoking skills, implementing, reviewing) happens in builders with fresh 200K context windows. This prevents the orchestrator from hitting context limits on large plans.
 
-### Ephemeral builders and validators
+### Ephemeral builders, validators, and auditors
 
-Both builders and validators are spawned fresh per phase and shut down after the review cycle completes. This prevents context contamination between phases, ensures skill instructions are always fully loaded (never compacted), and eliminates the single-validator bottleneck when multiple builders run in parallel.
+All agents are spawned fresh and shut down after their cycle completes — builders per phase, validators per phase, auditors per group. This prevents context contamination, ensures skill instructions are always fully loaded (never compacted), and eliminates bottlenecks when multiple builders run in parallel.
 
 ### Reviews folder separation
 
-`reviews/planning/` holds template + codebase compliance reviews from `/review-plan`. `reviews/code/` holds post-implementation reviews from `/code-review`. This means you can re-review a phase after fixing issues without losing the original review.
+`reviews/planning/` holds template + codebase compliance reviews from `/review-plan`. `reviews/code/` holds post-implementation reviews from `/code-review`. `reviews/implementation/` holds group audit reports (`group-{name}-audit.md`) written by the auditor after each group completes during `/implement`. This means you can re-review a phase after fixing issues without losing the original review, and the group audits capture the cross-phase holistic view that per-phase reviews miss — catching drift incrementally rather than at the end.
 
 ### Task descriptions as survival mechanism
 
@@ -418,12 +531,12 @@ Both `/review-plan` and `/code-review` read actual files from the codebase befor
 
 ## Skill Comparison
 
-| Aspect | create-plan | review-plan | audit-plan | implement | builder-workflow | code-review |
-|--------|-------------|-------------|------------|-----------|-----------------|-------------|
-| Lines | 362 | 304 | 318 | 261 | 192 | 278 |
-| Supporting files | 3 | 4 | 0 | 1 | 0 | 4 |
-| Validators used | 3 | 3 | 1 | 1 | 0 | 1 |
-| Auto-fix | No | Yes (Crit/High/Med) | No | No (builders do it) | No (validator does it) | Yes (Crit/High) |
-| Execution model | Single agent | Single agent (forked) | Single agent (forked) | Thin dispatcher + team | Preloaded into builder | Single agent (forked) |
-| Model | Sonnet | Sonnet | Sonnet | Opus (orchestrator) | Opus (builder) | Sonnet |
-| User-invocable | Yes | Yes | Yes | Yes | No | Yes |
+| Aspect | create-plan | review-plan | audit-plan | implement | builder-workflow | validator-workflow | auditor-workflow | code-review |
+|--------|-------------|-------------|------------|-----------|-----------------|-------------------|-----------------|-------------|
+| Lines | 390+ | 304 | 318 | 490+ | 210+ | 130+ | 380+ | 278 |
+| Supporting files | 3 | 4 | 0 | 1 | 0 | 0 | 0 | 4 |
+| Validators used | 3 | 3 | 1 | 1 | 0 | 0 | 0 | 1 |
+| Auto-fix | No | Yes (Crit/High/Med) | No | Yes (via builders) | No (validator does it) | Yes (via /code-review) | No (read-only) | Yes (Crit/High) |
+| Execution model | Thin dispatcher + planner | Single agent (forked) | Single agent (forked) | Thin dispatcher + team | Preloaded into builder | Preloaded into validator | Preloaded into auditor | Single agent (forked) |
+| Model | Opus (planner) | Sonnet | Sonnet | Opus (orchestrator) | Opus (builder) | Opus (validator) | Opus (auditor) | Sonnet |
+| User-invocable | Yes | Yes | Yes | Yes | No | No | No | Yes |

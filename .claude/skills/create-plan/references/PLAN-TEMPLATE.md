@@ -46,12 +46,23 @@ We follow a **[e.g., Progressive Enhancement]** strategy. The goal is to establi
 
 ### Phase Table
 
-| Phase  | Title                              | Focus              | Status    |
-| :----- | :--------------------------------- | :----------------- | :-------- |
-| **01** | [Title](./phase-01-slug.md)        | [Core Deliverable] | [Pending] |
-| **02** | [Title](./phase-02-slug.md)        | [Core Deliverable] | [Pending] |
-| **03** | [Title](./phase-03-slug.md)        | [Core Deliverable] | [Pending] |
-| **...** | ...                               | ...                | ...       |
+| Phase  | Title                              | Group              | Focus              | Status    |
+| :----- | :--------------------------------- | :----------------- | :----------------- | :-------- |
+| **01** | [Title](./phase-01-slug.md)        | [group-name]       | [Core Deliverable] | [Pending] |
+| **02** | [Title](./phase-02-slug.md)        | [group-name]       | [Core Deliverable] | [Pending] |
+| **03** | [Title](./phase-03-slug.md)        | [group-name]       | [Core Deliverable] | [Pending] |
+| **...** | ...                               | ...                | ...                | ...       |
+
+### Group Summary
+
+Groups define audit boundaries — connected phases are reviewed together after the group completes.
+
+| Group | Phases | Description |
+|-------|--------|-------------|
+| [group-name] | P01-P03 | [What this group delivers] |
+| [group-name] | P04-P06 | [What this group delivers] |
+
+**Group ordering:** Groups are implemented sequentially. Order them so dependencies flow top-to-bottom.
 
 ---
 

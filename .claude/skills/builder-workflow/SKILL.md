@@ -54,8 +54,10 @@ pnpm test
 
 - Exit code 0 → proceed to Step 3
 - Exit code ≠ 0 → check if failures are from current phase's TDD (expected) or previous phases
-  - Previous phase failures: fix them first, re-run to confirm green
+  - Previous phase failures: **fix them first**, re-run to confirm green, then proceed
   - Current phase TDD failures: expected, proceed
+
+**IMPORTANT — "pre-existing" is not an excuse.** After a context compact, you may not know whether failures existed before your work started. It doesn't matter. You own every failure present when you report completion. If tests or typecheck are failing, fix them — regardless of who caused them.
 
 ## Step 3: Invoke Domain Skill and Find Reference
 
@@ -124,6 +126,30 @@ pnpm run typecheck
 ```
 
 Both must pass. Fix any failures before proceeding.
+
+### Conditional Testing by Phase Type
+
+The phase's `skill:` frontmatter field determines which additional tests to run:
+
+| Phase Skill | Extra Test | Command |
+|-------------|-----------|---------|
+| `react-form-builder` | E2E tests | `pnpm test:e2e` (scoped) |
+| `vercel-react-best-practices` | E2E tests | `pnpm test:e2e` (scoped) |
+| `web-design-guidelines` | E2E tests | `pnpm test:e2e` (scoped) |
+| `playwright-e2e` | E2E tests | `pnpm test:e2e` (scoped) |
+| `postgres-expert` | DB tests | `pnpm test:db` |
+| `server-action-builder` | Unit tests sufficient | — |
+| `service-builder` | Unit tests sufficient | — |
+
+**E2E test scoping:**
+1. Extract keywords from the phase title/slug (e.g., `notes`, `billing`, `auth`)
+2. Glob for `e2e/**/*{keyword}*.spec.ts`
+3. If matches found: `pnpm test:e2e -- [matched spec files]`
+4. If no matches: `pnpm test:e2e` (full suite)
+
+**Graceful skip:** If a test command doesn't exist (exit code from missing script), skip it and note in your completion report. Projects without E2E or DB tests should not fail verification.
+
+All extra tests must pass before reporting completion.
 
 **Scope boundary:** Your job ends here. Do NOT run `/code-review` — an independent validator teammate will review your work after you report. This separation ensures blind spots are caught by a fresh set of eyes.
 

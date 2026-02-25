@@ -171,11 +171,16 @@ SendMessage({
 {1-2 sentence mission}
 
 ### Proposed Phase Breakdown
-| # | Title | Skill | Dependencies |
-|---|-------|-------|-------------|
-| 01 | {title} | {skill} | None |
-| 02 | {title} | {skill} | Phase 01 |
+| # | Title | Group | Skill | Dependencies |
+|---|-------|-------|-------|-------------|
+| 01 | {title} | {group} | {skill} | None |
+| 02 | {title} | {group} | {skill} | Phase 01 |
 ...
+
+### Group Summary
+| Group | Phases | Description |
+|-------|--------|-------------|
+| {name} | P01-P03 | {what this group delivers} |
 
 ### Architecture Decisions
 - {key decision 1}
@@ -203,7 +208,7 @@ For EACH phase, in order:
 Edit `plan.md` to add the phase row:
 
 ```markdown
-| **01** | [Title](./phase-01-slug.md) | [Focus] | Pending |
+| **01** | [Title](./phase-01-slug.md) | [group-name] | [Focus] | Pending |
 ```
 
 ### 7b: Create Phase File
@@ -229,9 +234,17 @@ Write the complete phase file following PHASE-TEMPLATE.md exactly.
 title: "Phase 01 - Database Schema"
 skill: postgres-expert
 status: pending
+group: "auth-system"
 dependencies: []
 ---
 ```
+
+**Group assignment rules:**
+- Connected phases building the same feature/component MUST share a `group:` name
+- Group names should be descriptive: `auth-system`, `dashboard-ui`, `data-pipeline`
+- Single-phase groups are valid for standalone work
+- Groups define audit boundaries — after all phases in a group complete during implementation, an auditor reviews them together
+- Order groups so dependencies flow top-to-bottom (group A before group B if B depends on A)
 
 For phases spanning multiple concerns, list the primary skill or use comma-separated values:
 ```yaml
@@ -295,10 +308,10 @@ SendMessage({
 **Phases**: {count} phases created
 
 ### Phase Breakdown
-| # | Title | Skill | Dependencies | Self-Validation |
-|---|-------|-------|-------------|-----------------|
-| 01 | {title} | {skill} | None | Passed |
-| 02 | {title} | {skill} | Phase 01 | Passed |
+| # | Title | Group | Skill | Dependencies | Self-Validation |
+|---|-------|-------|-------|-------------|-----------------|
+| 01 | {title} | {group} | {skill} | None | Passed |
+| 02 | {title} | {group} | {skill} | Phase 01 | Passed |
 ...
 
 ### Dependency Graph
