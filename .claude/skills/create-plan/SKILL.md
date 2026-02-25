@@ -142,9 +142,30 @@ When the planner reports checkpoint 2 (all phases created and self-validated):
    - **If approved:** Continue to Step 6 (spawn validators)
    - **If changes needed:** Message planner with feedback, loop until approved
 
-## Step 6: Spawn Validators
+## Step 6: Flow Audit (3+ Phases)
 
-After user approves the phases, spawn review validators to check template compliance and codebase patterns.
+For plans with 3 or more phases, run a **structural flow audit** BEFORE per-phase reviews. This catches design-level issues (circular dependencies, wrong ordering, incoherent data flow) that would invalidate all review work if discovered later.
+
+**Skip this step** for 1-2 phase plans (too small for flow issues).
+
+```
+/audit-plan plans/{YYMMDD}-{feature-name}
+```
+
+This invokes `/audit-plan` which writes a report to `{plan-folder}/reviews/planning/flow-audit.md`. The audit is intentionally lenient on polish (phases haven't been reviewed yet) but strict on structure.
+
+**Gate logic:**
+
+| Overall Assessment | Behaviour |
+|--------------------|----------|
+| **"Unusable"** | **HARD BLOCK:** Plan is fundamentally broken. Message planner with issues, wait for restructuring, re-audit |
+| **"Major Restructuring Needed"** | **HARD BLOCK:** Message planner with issues, wait for fixes, re-audit |
+| **"Significant Issues"** | **SOFT BLOCK:** Show user, ask whether to proceed or fix |
+| **"Minor Issues"** or **"Coherent"** | **PROCEED** to Step 7 |
+
+## Step 7: Spawn Validators
+
+After flow audit passes (or is skipped for small plans), spawn review validators to check template compliance and codebase patterns.
 
 Spawn **one validator per file** for thorough reviews. See [references/delegation-guide.md](references/delegation-guide.md) for prompt templates and batching rules.
 
@@ -242,13 +263,13 @@ Batch 2 (2 agents):
 → Wait for completion, then read results
 ```
 
-## Step 7: Handle Review Verdicts
+## Step 8: Handle Review Verdicts
 
 Process each validator's result:
 
 **PASS (Ready: Yes):**
 - Note the template score and any minor issues
-- Continue to next batch or Step 8
+- Continue to next batch or Step 9
 
 **FAIL (Ready: No or Critical/High issues):**
 1. Message the planner with the specific issues:
@@ -265,26 +286,6 @@ Process each validator's result:
 4. Repeat until PASS
 
 **Show the user review results** after each batch — template scores, codebase compliance, any issues found and fixed.
-
-## Step 8: Flow Audit (3+ Phases)
-
-For plans with 3 or more phases, run a flow audit to catch structural issues that per-phase reviews cannot see — circular dependencies, missing dependency declarations, wrong phase ordering, and stale artefacts.
-
-**Skip this step** for 1-2 phase plans (too small for flow issues).
-
-```
-/audit-plan plans/{YYMMDD}-{feature-name}
-```
-
-This invokes `/audit-plan` which writes a report to `{plan-folder}/reviews/planning/flow-audit.md`. The `/implement` orchestrator gate-checks this report before starting implementation — if the overall assessment is "Major Restructuring Needed", implementation blocks.
-
-**Gate logic:**
-
-| Overall Assessment | Behaviour |
-|--------------------|----------|
-| **"Major Restructuring Needed"** | **HARD BLOCK:** Message planner with issues, wait for fixes, re-audit |
-| **"Significant Issues"** | **SOFT BLOCK:** Show user, ask whether to proceed or fix |
-| **"Minor Issues"** or **"Coherent"** | **PROCEED** to Step 9 |
 
 ## Step 9: Cleanup
 
@@ -356,6 +357,7 @@ Tasks are the orchestrator's source of truth for progress — not memory, not pl
 ## Error Breakout Conditions
 
 STOP and shut down if:
+- Flow audit returns "Unusable" and planner cannot restructure
 - Validator FAIL repeats 3+ times on the same file
 - Planner cannot resolve Critical review issues
 - User requests cancellation
@@ -380,6 +382,7 @@ The user experienced each of these failures. Understanding the harm helps you av
 | Folder without date prefix | Folders become unsorted chronologically |
 | Skipping TaskList check | Duplicates tasks if resuming after context compact |
 | Too many concurrent validators | Context window blowout from result flooding |
+| Running reviews before flow audit | Structural issues invalidate all review work — hours wasted on phases that need restructuring |
 
 ## Template Locations
 

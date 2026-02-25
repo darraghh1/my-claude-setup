@@ -39,11 +39,13 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
   - [Tavily](#tavily)
   - [Sequential Thinking](#sequential-thinking)
   - [Draw.io](#drawio)
-- [Status Line](#status-line)
 - [Prompt Caching](#prompt-caching)
 - [Customization Guide](#customization-guide)
 - [Troubleshooting](#troubleshooting)
 - [Plugins](#plugins)
+- [Community Addons](#community-addons)
+  - [RTK (Rust Token Killer)](#rtk-rust-token-killer)
+  - [Claude Ultimate HUD](#claude-ultimate-hud)
 - [Research](#research)
 - [Acknowledgments](#acknowledgments)
 - [License](#license)
@@ -69,7 +71,7 @@ This setup's primary value is a **structured development pipeline** — from fea
 ### The Pipeline
 
 <picture>
-  <img alt="Development pipeline diagram showing the flow from /create-plan through /review-plan, /audit-plan, and /implement with group-based auditing" src="docs/pipeline.png" width="950">
+  <img alt="Development pipeline diagram showing the flow from /create-plan through /audit-plan, /review-plan, and /implement with group-based auditing" src="docs/pipeline.png" width="950">
 </picture>
 
 `/implement` now processes phases in **groups** — connected phases that build the same feature area. After each group's phases pass the build/validate cycle, an auditor automatically reviews the group for cross-phase regressions, deferred items, plan drift, and system integrity. Medium/Low issues are auto-fixed; High/Critical issues checkpoint with the user. This catches drift incrementally rather than discovering it after 20 phases.
@@ -94,7 +96,7 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 
 | Pipeline | Orchestrator | Ephemeral Agents | Communication |
 |----------|-------------|-----------------|---------------|
-| **Planning** (`/create-plan`) | Clarifies requirements, relays checkpoints to user, spawns validators | Planner (creates plan.md + phases), Validators (run `/review-plan`) | Checkpoints: planner reports plan summary and phase completion for user approval |
+| **Planning** (`/create-plan`) | Clarifies requirements, relays checkpoints to user, runs structural audit, spawns validators | Planner (creates plan.md + phases), Auditor (runs `/audit-plan`), Validators (run `/review-plan`) | Checkpoints: planner reports plan summary and phase completion for user approval. Audit gates reviews — structural issues block before per-phase review work begins. |
 | **Implementation** (`/implement`) | Processes groups sequentially, gate checks, routes verdicts, triages audit findings | Builder (implements one phase), Validator (runs `/code-review`), Auditor (cross-phase group review) | Builder → Validator → (per group) Auditor → orchestrator triages findings |
 
 #### Implementation Team (`/implement`)
@@ -110,9 +112,10 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
-| **Orchestrator** | Entire session | Clarifies requirements with user, spawns planner + validators, relays checkpoints for user approval, routes review feedback |
+| **Orchestrator** | Entire session | Clarifies requirements with user, spawns planner, runs structural audit, spawns validators, relays checkpoints for user approval, routes review feedback |
 | **Planner** | One plan (ephemeral) | Reads templates, explores codebase references, creates plan.md + all phase files, self-validates. Reports at two checkpoints for user course-correction. |
-| **Validator** | One file (ephemeral) | Runs `/review-plan` against plan.md or a single phase file. Reports template score + codebase compliance. |
+| **Auditor** | One audit (ephemeral) | Runs `/audit-plan` — structural flow audit checking dependencies, ordering, data flow. Bails with "Unusable" if plan is fundamentally broken. Gates per-phase reviews. |
+| **Validator** | One file (ephemeral) | Runs `/review-plan` against plan.md or a single phase file. Reports template score + codebase compliance. Only spawned after audit passes. |
 
 **Why agents are ephemeral:** Each task gets a fresh agent with a clean 200K context window. After the work cycle completes, agents are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
 
@@ -140,13 +143,23 @@ Quality is enforced at four layers during each phase, in order:
 | **Validator `/code-review`** | After builder reports done | 451-line checklist, codebase-grounded, auto-fix (independent agent) | Pattern deviations, security issues, missing auth checks |
 | **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Issues introduced by auto-fixes, E2E regressions, DB test failures |
 
-The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification.
+The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification. To enable the TypeScript LSP:
+
+```bash
+# 1. Install the language server
+npm install -g typescript-language-server typescript
+
+# 2. Enable the plugin (in ~/.claude/settings.json)
+# "enabledPlugins": { "typescript-lsp@claude-plugins-official": true }
+```
+
+Once installed, Claude Code gets real-time diagnostics (type errors, missing imports, unused variables) without needing to run `tsc` — the same feedback loop your IDE provides.
 
 Both `/review-plan` (planning phase) and `/code-review` (implementation phase) are **codebase-grounded** — they read actual files from your project before flagging issues, so findings are specific to your codebase rather than generic advice.
 
 Implementation is blocked if:
+- Flow audit says "Unusable" or "Major Restructuring Needed" (structural issues must be fixed before reviews even begin)
 - Plan review verdict is "No"
-- Flow audit says "Major Restructuring Needed"
 - Phase contains placeholder content (`[To be detailed]`, `TBD`)
 - Phase review has unresolved Critical/High issues
 - Validator returns FAIL 3+ times on the same phase (escalates to user)
@@ -347,8 +360,6 @@ Optional:
 │   └── web-design-guidelines/
 ├── settings.json                   # Hook configuration and environment
 ├── settings.local.json             # Local overrides (output style, spinner)
-└── statusline-command.py           # Status bar: model, context, usage, tasks, agents, git
-
 docs/
 └── research/                       # 9 Anthropic reference documents (see Research section)
 
@@ -471,8 +482,8 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 | Skill | Slash Command | Purpose |
 |-------|--------------|---------|
 | **create-plan** | `/create-plan` | Orchestrates plan creation — spawns an ephemeral planner agent with user checkpoints, then validators for review |
-| **review-plan** | `/review-plan` | Reviews and validates implementation plans against project patterns and conventions |
-| **audit-plan** | `/audit-plan` | Audits existing plans for completeness, risk, and alignment with architecture |
+| **audit-plan** | `/audit-plan` | Structural flow audit — dependencies, ordering, data flow. Runs BEFORE reviews; bails on fundamentally broken plans |
+| **review-plan** | `/review-plan` | Per-phase template + codebase compliance review. Runs AFTER audit passes |
 | **implement** | `/implement` | Executes implementation phases from a plan (handles TDD, coding, review loop) |
 
 ### Code Quality
@@ -737,65 +748,6 @@ npx playwright install chromium
 
 ---
 
-## Status Line
-
-The `statusline-command.py` script renders a rich status bar at the bottom of Claude Code showing real-time session info:
-
-```text
-Opus | ██████░░░░ 58% | 5h: 23% (3h12m) | 7d: 8% (5d2h) | Tasks: 2/5 | Agents: 1 team + 2 bg | notes P3 | development
-```
-
-**Segments displayed:**
-
-| Segment | Source | Example |
-|---------|--------|---------|
-| Model | Claude's stdin | `Opus`, `Sonnet`, `Haiku` |
-| Context | Token usage / window size | `██████░░░░ 58%` |
-| 5h Usage | Anthropic OAuth API | `5h: 23% (3h12m)` — resets every 5 hours |
-| 7d Usage | Anthropic OAuth API | `7d: 8% (5d2h)` — resets every 7 days |
-| Tasks | Open/completed task counts | `Tasks: 2/5` (hidden when no tasks) |
-| Agents | Active teammates + background tasks | `Agents: 1 team + 2 bg` (hidden when none) |
-| Plan | Per-plan sidecar files from `/implement` | `notes P3` or `notes P3 | billing P1` (hidden when no plan active) |
-| Git Branch | `git branch --show-current` | `development` |
-
-The **Plan** segment uses per-plan sidecar files in `~/.cache/claude-statusline/plans/` — each `/implement` session writes its own file keyed by plan name (e.g., `notes.json`, `billing.json`). This means multiple agents working on different plans each get their own sidecar with no overwrites. The statusline scans all sidecar files and displays every active plan. Stale sidecars from crashed sessions auto-expire after 2 hours.
-
-Colors change from green to yellow to red as usage increases (50% / 80% thresholds).
-
-### Status Line Setup
-
-1. **Copy the script** to your global Claude config:
-
-```bash
-cp .claude/statusline-command.py ~/.claude/statusline-command.py
-chmod +x ~/.claude/statusline-command.py
-```
-
-2. **Add to your global settings** at `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/statusline-command.py"
-  }
-}
-```
-
-The status line is a **global** setting (not per-project) because it uses your OAuth credentials from `~/.claude/.credentials.json` to fetch usage data. Place it in `~/.claude/settings.json`, not the project-level settings.
-
-### How It Works
-
-The script receives JSON on stdin from Claude Code containing model info, context window state, active tasks/agents, and workspace path. It fetches subscription utilization from the Anthropic OAuth usage API (`api.anthropic.com/api/oauth/usage`) with a 60-second cache to avoid excessive API calls, then renders all segments with ANSI 256-color codes.
-
-### Requirements
-
-- **Claude Code Max or Pro subscription** — the OAuth usage endpoint requires an active subscription
-- **Authenticated session** — you must be logged in (the script reads `~/.claude/.credentials.json`)
-- No additional dependencies — uses only Python standard library (`urllib`, `json`, `subprocess`)
-
----
-
 ## Prompt Caching
 
 This setup is designed to maximise prompt cache hit rates. The Anthropic API caches the **prefix** of each request — system prompt, tool definitions, CLAUDE.md, rules, skill registry, and MEMORY.md. When the prefix is identical between turns, those tokens cost ~90% less and process faster. Any change to the prefix (editing CLAUDE.md mid-session, adding/removing tools, switching models) invalidates everything after the change point.
@@ -1019,6 +971,110 @@ The `notify.py` utility sends HTTP requests to `localhost:9999` for sound alerts
 ## Plugins
 
 Optional Claude Code plugins can enhance the development experience. See [plugins.md](plugins.md) for details on available plugins and installation instructions.
+
+---
+
+## Community Addons
+
+Third-party tools that complement this Claude Code setup.
+
+### RTK (Rust Token Killer)
+
+**Repo:** [rtk-ai/rtk](https://github.com/rtk-ai/rtk) — MIT licensed, written in Rust
+
+RTK is a high-performance CLI proxy that filters and compresses command output before it reaches Claude's context window. In a typical 30-minute session, it reduces token consumption by 60-90% on common dev operations.
+
+**Why we use it:** Claude Code's Bash tool generates verbose output — full git diffs, test suite results, lint reports, Docker logs. Every token of that output counts against your context window and API costs. RTK intercepts these commands transparently and returns only the signal, stripping noise like table borders, progress bars, boilerplate headers, and passing test details.
+
+**How it integrates:**
+
+A `PreToolUse` hook (`~/.claude/hooks/rtk-rewrite.sh`) intercepts every Bash tool call and rewrites supported commands to their `rtk` equivalents. This is fully transparent — Claude asks to run `git diff`, the hook rewrites it to `rtk git diff`, and the compressed output is what enters the context window. No manual intervention required.
+
+```
+Claude runs:  pnpm run test
+Hook rewrites:  rtk pnpm run test
+RTK routes:  VitestParser → 90%+ token savings
+```
+
+**Supported commands:**
+
+| Category | Commands | Typical Savings |
+|----------|----------|----------------|
+| Git | `status`, `diff`, `log`, `show`, `commit`, `push` | 70-80% |
+| GitHub CLI | `pr`, `issue`, `run`, `api` | 80-87% |
+| pnpm | `run <script>`, `test`, `lint`, `typecheck`, `install` | 40-90% |
+| Tests | Vitest, Playwright, Jest, pytest, `go test` | 80-99% |
+| Build | `tsc`, ESLint, Prettier, `cargo build/clippy` | 70-90% |
+| Files | `cat`/`head` → `rtk read`, `grep`, `ls`, `find` | 60-80% |
+| Infra | Docker, kubectl, psql, AWS CLI | 60-85% |
+| Network | `curl`, `wget` | 65-70% |
+
+**Useful commands:**
+
+```bash
+rtk gain              # Token savings dashboard
+rtk gain --history    # Per-command savings breakdown
+rtk discover --all    # Find commands you're not routing through rtk yet
+rtk proxy <cmd>       # Bypass rtk filtering (debugging)
+```
+
+**Setup:**
+
+1. Install rtk ([install guide](https://github.com/rtk-ai/rtk/blob/master/INSTALL.md))
+2. Copy `~/.claude/hooks/rtk-rewrite.sh` from this repo
+3. Add the PreToolUse hook to `~/.claude/settings.json`:
+   ```json
+   {
+     "hooks": {
+       "PreToolUse": [{
+         "matcher": "Bash",
+         "hooks": [{
+           "type": "command",
+           "command": "/home/YOU/.claude/hooks/rtk-rewrite.sh"
+         }]
+       }]
+     }
+   }
+   ```
+4. Verify: run any Bash command in Claude Code, then check `rtk gain`
+
+### Claude Ultimate HUD
+
+**Repo:** [hadamyeedady12-dev/claude-ultimate-hud](https://github.com/hadamyeedady12-dev/claude-ultimate-hud) — MIT licensed, TypeScript/Bun
+
+A rich status line plugin that replaces Claude Code's default minimal status bar with a multi-line HUD showing context usage, rate limits, tool activity, agent progress, and project info at a glance.
+
+**Why we use it:** Claude Code's default status line tells you almost nothing — you can't see how much context you've burned, when your rate limit resets, or how many tool calls have fired. This HUD surfaces all of that in real time so you can make informed decisions about when to `/compact`, when to wrap up, and whether your agents are actually making progress.
+
+**What it shows:**
+
+```
+🤖 Opus 4.6 │ ████░░░░░░ 18% │ 37K/200K │ 5h: 12% (3h59m) │ 7d: 18%
+📁 my-project git:(main) │ 2 CLAUDE.md │ 8 rules │ 6 MCPs │ 6 hooks │ ⏱️ 1h30m
+◐ Read: file.ts │ ✓ Bash ×5 │ ✓ Edit ×3
+▸ Auth flow implementation (2/5)
+⚠️ Context 85% - /compact recommended
+```
+
+| Line | What You See |
+|------|-------------|
+| Model + context | Current model, context bar with color coding (green/yellow/red), token count, rate limit usage with reset countdown |
+| Project info | Directory, git branch, counts of CLAUDE.md files, rules, MCP servers, hooks, session duration |
+| Tool activity | Currently running tool, recently completed tools with counts |
+| TODO progress | Current task and completion rate (if using TodoWrite) |
+| Warnings | Context threshold alerts at 80% and 90% |
+
+**Setup:**
+
+```
+/plugins marketplace add hadamyeedady12-dev/claude-ultimate-hud
+/plugins install claude-ultimate-hud
+/claude-ultimate-hud:setup
+```
+
+The setup skill prompts you to select your plan (`max200`, `max100`, or `pro`) and language. Configuration is stored in `~/.claude/claude-ultimate-hud.local.json`.
+
+Requires **Bun** or **Node.js 18+**.
 
 ---
 

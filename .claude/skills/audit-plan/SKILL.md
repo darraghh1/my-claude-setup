@@ -1,13 +1,13 @@
 ---
 name: audit-plan
-description: "Audit implementation plans for phase-to-phase dependencies, data flow consistency, ordering logic, and stale artifacts. Produces a risk-assessed flow audit report."
+description: "Structural audit of implementation plans — dependencies, data flow, ordering, stale artifacts. Runs BEFORE per-phase reviews to catch design-level issues early. Bails on fundamentally broken plans."
 argument-hint: "[plan-folder]"
 context: fork
 agent: general-purpose
 model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(uv run*) TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
-  version: 1.2.0
+  version: 2.0.0
 ---
 
 <!-- ultrathink: Enable extended thinking for holistic flow analysis -->
@@ -18,7 +18,9 @@ metadata:
 
 Arguments are provided above via `$ARGUMENTS`. Parse them to determine the plan folder path (e.g., `plans/detector-refactor`). Do NOT ask the user to re-provide the path.
 
-This skill performs a **holistic flow audit** of a multi-phase implementation plan. It assesses whether phases connect coherently as a pipeline — NOT whether individual phases comply with templates (that's `/review-plan`'s job).
+This skill performs a **structural flow audit** of a multi-phase implementation plan. It assesses whether phases connect coherently as a pipeline — NOT whether individual phases comply with templates (that's `/review-plan`'s job).
+
+**Positioning:** This audit runs BEFORE per-phase reviews. Phases have NOT been reviewed or polished yet. Focus on intended design vs. planned structure, not on template completeness or placeholder content.
 
 ## Critical
 
@@ -27,6 +29,7 @@ This skill performs a **holistic flow audit** of a multi-phase implementation pl
 - Ground findings in actual codebase files, not just plan documents
 - When you claim a phase targets a file that doesn't exist, verify with Glob first
 - Distinguish between intentional design choices and actual discrepancies
+- **Tolerate rough edges** — phases may have incomplete sections, placeholder content, or imperfect formatting. That's `/review-plan`'s job to fix. You're checking whether the PLAN DESIGN is sound.
 
 ## Task Tracking
 
@@ -43,21 +46,22 @@ If no tasks exist, create them after reading the master plan (Step 1):
 ```
 Task 1: Read the master plan
 Task 2: Read all phase files and extract metadata
-Task 3: Build dependency graph
+Task 3: Build dependency graph + bail-out check
 Task 4: Assess data flow consistency
 Task 5: Evaluate phase ordering
 Task 6: Identify stale artifacts
-Task 7: Cross-check "Done" phases against codebase
-Task 8: Assess risk for pending phases
-Task 9: Write audit report
-Task 10: Return summary
+Task 7: Assess risk for pending phases
+Task 8: Write audit report
+Task 9: Return summary
 ```
 
 Mark each task `in_progress` when starting and `completed` when done.
 
 ## Why This Audit Exists
 
-`/review-plan` checks individual files. This audit checks the **connections between them**. Problems that only appear at the whole-plan level:
+`/review-plan` checks individual files for template compliance and codebase patterns. This audit checks the **connections between them** — structural design issues that only appear at the whole-plan level.
+
+**This runs FIRST** (before `/review-plan`) because structural issues invalidate all per-phase review work. No point polishing Phase 5's code blocks if Phase 5 depends on a table that Phase 3 doesn't actually create.
 
 | Problem | How It Manifests | Cost If Missed |
 |---------|-----------------|----------------|
@@ -65,9 +69,9 @@ Mark each task `in_progress` when starting and `completed` when done.
 | Missing dependencies | Phase 5 uses a table from Phase 3 but doesn't declare it | Phase 5 fails at runtime, debugging time wasted |
 | Wrong ordering | Consumer phase runs before its data producer | Code compiles but crashes, phase must be re-sequenced |
 | Stale artifacts | plan.md says "Done" but phase file says "Pending" | `/implement` picks the wrong next phase |
-| "Done" phase not actually done | Phase marked complete but deliverables missing from codebase | Downstream phases build on a false foundation |
+| Incoherent data flow | Phases disagree on table names, patterns, or sources | Every downstream phase builds on wrong assumptions |
 
-The audit report feeds into `/implement` — it checks the plan review verdict before building. A flow audit catches structural problems that per-phase reviews cannot see.
+The audit report feeds into `/implement` — it checks the flow audit verdict before building. A structural audit catches design problems that per-phase reviews cannot see.
 
 ## Output Location
 
@@ -114,18 +118,18 @@ For EACH phase file, extract from the frontmatter and overview:
 
 Build a mental model of the full dependency graph as you read.
 
-### Placeholder Check
+### Placeholder Check (Informational Only)
 
-Run the placeholder validator across all phase files to catch skeleton content early:
+Run the placeholder validator to note which phases still have skeleton content:
 
 ```bash
 echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_no_placeholders.py \
   --directory {plan-folder} --extension .md
 ```
 
-If the validator exits non-zero, flag any placeholder-containing phases as stale artifacts in the report (Step 6). Phases with `[To be detailed]`, `TBD`, or other skeleton markers cannot be meaningfully audited for flow.
+**This is NOT a blocker.** Since this audit runs before `/review-plan`, phases may still contain `[To be detailed]`, `TBD`, or skeleton markers. Note these in the report for awareness, but do NOT fail the audit because of them. Reviewers will clean them up. Only flag placeholders in critical structural sections (dependencies, data flow descriptions) as a concern.
 
-## Step 3: Build Dependency Graph
+## Step 3: Build Dependency Graph + Bail-Out Check
 
 From the data collected in Step 2, construct the full dependency graph.
 
@@ -143,6 +147,25 @@ From the data collected in Step 2, construct the full dependency graph.
 | Unnecessary dependencies | Phase X lists Phase Y but doesn't actually use any of Y's output |
 | Orphaned phases | Phase exists but no other phase depends on it AND it doesn't depend on anything |
 | Dependency on deprecated phase | A phase depends on a phase marked `status: deprecated` |
+
+### Bail-Out Assessment
+
+After building the dependency graph, evaluate whether the plan is **fundamentally broken**. If ANY of these conditions are true, **STOP the audit immediately** — write a short report with assessment "Unusable" and return:
+
+| Bail-Out Condition | Why It's Fatal |
+|--------------------|---------------|
+| Circular dependencies exist | Cannot be resolved by review — requires plan restructuring |
+| >50% of phases have missing/wrong dependencies | Dependency graph is unreliable — plan needs redesign |
+| No coherent execution order exists | Phases cannot be sequenced — plan is incoherent |
+| Plan has no discernible architecture | Phases are disconnected fragments, not a pipeline |
+
+**If the plan is bail-out level broken:** Skip Steps 4-7. Write a minimal report (Step 8) with:
+- Overall Assessment: **Unusable — Needs Restructuring**
+- The specific bail-out condition(s) detected
+- A brief recommendation for what needs to change
+- Return immediately (Step 9)
+
+This saves the user from waiting through a full audit of a plan that needs to be thrown out and rewritten.
 
 ## Step 4: Assess Data Flow Consistency
 
@@ -186,18 +209,7 @@ Check for:
 | Phase table mismatches | plan.md phase table lists a phase title/file that doesn't match the actual file |
 | Stale status | plan.md says "Done" but phase file says "Pending" (or vice versa) |
 
-## Step 7: Cross-Check "Done" Phases Against Codebase
-
-For phases marked as "Done", spot-check 2-3 key claims against the actual codebase:
-
-1. Pick 2-3 "Done" phases that make testable claims (e.g., "created table X", "updated file Y", "added field Z to interface")
-2. Use Glob/Grep to verify the claim holds in the codebase
-3. Check if `{plan-folder}/reviews/code/phase-{NN}.md` exists for each "Done" phase — a passing code review verdict is stronger evidence than file existence alone
-4. Flag any "Done" phases whose deliverables can't be found
-
-This prevents the plan from proceeding on a false foundation.
-
-## Step 8: Assess Risk for Pending Phases
+## Step 7: Assess Risk for Pending Phases
 
 For each pending phase, evaluate risk based on:
 
@@ -206,10 +218,10 @@ For each pending phase, evaluate risk based on:
 | Dependencies | Depends on phases with known issues | Dependencies are clean and verified |
 | File targets | References files that don't exist or are uncertain | Targets well-known, stable files |
 | Scope | Touches many files across many directories | Focused on 1-2 files |
-| Pattern clarity | Introduces new patterns not seen in codebase | Follows established patterns from "Done" phases |
+| Pattern clarity | Introduces new patterns not seen in codebase | Follows established patterns from earlier phases or codebase |
 | Blocking | Many downstream phases depend on it | Few or no downstream dependencies |
 
-## Step 9: Write Audit Report
+## Step 8: Write Audit Report
 
 Write the report to: `{plan-folder}/reviews/planning/flow-audit.md`
 
@@ -224,7 +236,7 @@ Create the `reviews/planning/` directory if it doesn't exist.
 
 **Audited:** {date}
 **Phases reviewed:** {count} ({done count} Done, {pending count} Pending, {deprecated count} Deprecated)
-**Overall Assessment:** {Coherent | Minor Issues | Significant Issues | Major Restructuring Needed}
+**Overall Assessment:** {Coherent | Minor Issues | Significant Issues | Major Restructuring Needed | Unusable}
 
 ---
 
@@ -275,16 +287,7 @@ Create the `reviews/planning/` directory if it doesn't exist.
 
 ---
 
-## 5. "Done" Phase Verification
-
-| Phase | Claim Checked | Verified? | Notes |
-|-------|--------------|-----------|-------|
-| P01 | Summary table created | Yes/No | ... |
-| P11 | Orchestrator loads summaries | Yes/No | ... |
-
----
-
-## 6. Risk Assessment (Pending Phases)
+## 5. Risk Assessment (Pending Phases)
 
 | Phase | Risk | Key Risk Factors | Recommendation |
 |-------|------|-----------------|----------------|
@@ -293,7 +296,7 @@ Create the `reviews/planning/` directory if it doesn't exist.
 
 ---
 
-## 7. Recommendations (Priority Order)
+## 6. Recommendations (Priority Order)
 
 1. **[Critical]** {Description} — Fix before continuing implementation
 2. **[High]** {Description} — Fix before implementing affected phases
@@ -301,7 +304,7 @@ Create the `reviews/planning/` directory if it doesn't exist.
 4. **[Low]** {Description} — Nice to have
 ```
 
-## Step 10: Return Summary
+## Step 9: Return Summary
 
 After writing the report, return to the main agent:
 
@@ -333,10 +336,12 @@ TaskList → find in_progress or first pending → TaskGet → continue work →
 
 - **Source files are read-only** — do NOT modify plan files, phase files, or codebase files. The only file you write is the audit report at `{plan-folder}/reviews/planning/flow-audit.md`
 - **All phases** — read every phase file, not just a sample
-- **Codebase grounding** — verify at least 2-3 "Done" phase claims against actual code. Use file paths from the phases themselves (implementation steps list target files)
-- **No template checking** — that's `/review-plan`'s job. Focus on flow, not format
-- **Severity calibration** — only mark issues as Critical if they would cause implementation failure. Use High for likely problems, Medium for hygiene issues, Low for suggestions
-- **Pipeline awareness** — `/implement` checks the plan review verdict before building. Your audit report influences whether implementation proceeds or blocks
+- **Codebase grounding** — verify that key files referenced in phases actually exist at those paths. Use Glob to spot-check
+- **No template checking** — that's `/review-plan`'s job. Focus on structural design, not format or polish
+- **Tolerate rough edges** — phases have NOT been reviewed yet. Placeholder content, incomplete sections, and formatting issues are expected. Only flag these if they obscure structural intent (e.g., dependencies section is entirely TBD)
+- **Severity calibration** — only mark issues as Critical if they would cause implementation failure (circular deps, fundamentally wrong ordering). Use High for likely problems, Medium for structural concerns, Low for suggestions
+- **Bail-out early** — if the plan is fundamentally broken (Step 3), stop and say so. Don't spend tokens auditing an unusable plan
+- **Pipeline awareness** — this audit runs BEFORE `/review-plan`. Your verdict determines whether per-phase reviews proceed or the plan gets sent back to the planner
 
 ## Troubleshooting
 
@@ -352,8 +357,8 @@ TaskList → find in_progress or first pending → TaskGet → continue work →
 
 **Fix:** Infer dependencies from content — look for "requires Phase X", "uses table from Phase Y", "after Phase Z is complete" in the overview and prerequisites sections. Flag the missing metadata as a stale artifact.
 
-### "Done" Phase Can't Be Verified
+### Phases Have Lots of Placeholders
 
-**Symptom:** Phase claims to have modified a file but Glob/Grep can't confirm.
+**Symptom:** Many phases have `[To be detailed]` or `TBD` in their content.
 
-**Fix:** Don't assume the phase wasn't implemented — the file might have been refactored or renamed since. Check git history if available, or note as "Unverifiable" rather than "Not Done."
+**Fix:** This is expected — the audit runs before reviews clean these up. Only flag placeholders if they appear in structural sections (dependencies, data flow, key file paths) where you can't assess the design without them. Note the count in the report for the reviewers' benefit.

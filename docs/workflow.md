@@ -5,7 +5,7 @@ How the planning skills work together as an assembly line — from feature idea 
 ## The Pipeline
 
 ```
-/create-plan → /review-plan → /audit-plan → /implement → done
+/create-plan → /audit-plan → /review-plan → /implement → done
                                                 │
                                                 ├── gate: plan review + flow audit
                                                 │
@@ -39,41 +39,46 @@ How the planning skills work together as an assembly line — from feature idea 
                                                         ├── Medium → auto-fix (builder + validator)
                                                         └── High/Critical → ask user
 
-/audit-plan (runs during /create-plan Step 10 for 3+ phase plans)
+/audit-plan (runs during /create-plan Step 6 for 3+ phase plans, BEFORE per-phase reviews)
 ```
 
 Each skill has hard gates preventing progression until quality is met. Every guardrail exists because skipping it caused hours of rework in real usage.
 
 ---
 
-## 1. `/create-plan` — The Architect
+## 1. `/create-plan` — The Orchestrator
 
-**Files:** `SKILL.md` (378 lines) + `references/PLAN-TEMPLATE.md` + `references/PHASE-TEMPLATE.md` + `references/delegation-guide.md`
+**Files:** `SKILL.md` (416 lines) + `references/PLAN-TEMPLATE.md` + `references/PHASE-TEMPLATE.md` + `references/delegation-guide.md`
 
-**What it does:** Creates a complete planning package in a date-prefixed folder (`plans/250214-feature-name/`). Produces:
+**What it does:** Acts as a **thin dispatcher** that clarifies requirements with the user, spawns an ephemeral planner agent for plan/phase creation, then spawns validators for review. The orchestrator does NOT read templates, explore the codebase, or create files — the planner handles all planning work via the preloaded `planner-workflow` skill.
 
-- `plan.md` — master plan with executive summary, phase table, architecture patterns, security requirements
-- `phase-01-slug.md` through `phase-NN-slug.md` — one file per atomic unit of work
-- Spawns review sub-agents at the end
+### Architecture
 
-### The 11-step workflow
+| Role | Responsibility |
+|------|---------------|
+| **Orchestrator** | Clarify requirements with user, spawn/shutdown planner + validators, relay checkpoints for user approval, route review feedback |
+| **Planner** (ephemeral) | Read templates, explore codebase references, create plan.md + all phase files, self-validate. Reports at two checkpoints for user course-correction. |
+| **Validator** (ephemeral) | Run `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
+
+### The 9-step workflow
 
 | Step | What Happens | Why It Exists |
 |------|-------------|---------------|
 | 1. Clarify | `AskUserQuestion` to resolve ambiguity | User experienced 20-phase plans built on wrong assumptions |
-| 2. Read templates | Reads PLAN-TEMPLATE.md + PHASE-TEMPLATE.md | Phases without template reading miss required sections |
-| 3. Create folder | `plans/{YYMMDD}-{feature}/` with review subfolders | Chronological sorting |
-| 4. Task list | `TaskCreate` for every phase + resume check | Tasks survive context compacts; prevents lost progress |
-| 5. plan.md | All sections except phase table rows | Missing sections caught during review |
-| 6. Design phases | Phase breakdown with "30 small > 5 large" rule | Large phases exceed context window, lose work mid-implementation |
-| 7. Read codebase | Glob + Read real files for each phase type | Code blocks from memory don't match real codebase |
-| 8. Create phases | Iterative: add row, write file, validate, repeat | Each phase follows PHASE-TEMPLATE exactly |
-| 9. Review | Spawn sub-agents in batches of 4 via `/review-plan` | Self-review has blind spots |
-| 10. Flow audit | `/audit-plan` for 3+ phases — catches cross-phase issues | Per-phase reviews can't see circular deps or ordering problems |
-| 11. Report | Summary with scores and verdict | |
+| 2. Create team | `TeamCreate` for planner + validators | Enables message routing between agents |
+| 3. Spawn planner | Fresh ephemeral agent with 200K context, preloaded `planner-workflow` skill | Planner reads templates, explores codebase, creates all artifacts |
+| 4. User checkpoint — plan review | Orchestrator relays planner's plan summary for user approval | Catches wrong assumptions before phases are written |
+| 5. User checkpoint — phases complete | Orchestrator relays completion summary | User verifies phase breakdown before review |
+| 6. Flow audit | `/audit-plan` for 3+ phases — catches structural/design issues | Structural issues invalidate all per-phase review work; bail out early on broken plans |
+| 7. Spawn validators | Batches of max 4 concurrent, each runs `/review-plan` on one file | Self-review has blind spots; one file per agent prevents superficial reviews |
+| 8. Handle verdicts | Route PASS/FAIL back to planner for fixes | Ensures all issues are resolved |
+| 9. Cleanup | Shutdown planner + validators, delete team, report summary | |
 
 ### Key design decisions
 
+- **Thin dispatcher** — orchestrator stays lean (only messages + plan.md), all heavy lifting in planner with fresh 200K context
+- **Two user checkpoints** — plan summary reviewed before writing phases, phase completion reviewed before spawning validators
+- **Ephemeral planner** — fresh context prevents skill compaction and context contamination
 - **Phases are atomic** — each should fit in ~1 context window (~15KB). "30 small phases > 5 large phases"
 - **TDD is Step 0** in every phase, not an afterthought
 - **`skill:` in frontmatter** tells the builder which domain skill to invoke (e.g., `postgres-expert`, `server-action-builder`)
@@ -84,7 +89,7 @@ Each skill has hard gates preventing progression until quality is met. Every gua
 
 ## 2. `/review-plan` — The Quality Gate
 
-**Files:** `SKILL.md` (304 lines) + `checklist.md` (400 lines) + `delegation.md` + `PLAN-REVIEW-TEMPLATE.md` + `scripts/validate_review.py`
+**Files:** `SKILL.md` (346 lines) + `checklist.md` (400 lines) + `delegation.md` + `PLAN-REVIEW-TEMPLATE.md` + `scripts/validate_review.py`
 
 **Templates:** Reads `PLAN-TEMPLATE.md` and `PHASE-TEMPLATE.md` from `../create-plan/references/` (no local copies).
 
@@ -140,62 +145,98 @@ When `/create-plan` spawns review agents, the `delegation.md` enforces:
 
 ## 3. `/implement` — The Thin Dispatcher
 
-**Files:** `SKILL.md` (277 lines) + `references/team-operations.md` (156 lines)
+**Files:** `SKILL.md` (490 lines) + `references/team-operations.md`
 
-**What it does:** Acts as a thin dispatcher that spawns ephemeral builders and validators per phase and routes PASS/FAIL verdicts. It does NOT read references, extract patterns, or implement code — builders handle implementation via the preloaded `builder-workflow` skill, and the validator handles independent code review.
+**What it does:** Acts as a thin dispatcher that processes phases in **groups** — connected phases that build the same feature area. For each group: spawns ephemeral builders and validators per phase, then an auditor for cross-phase analysis. It does NOT read references, extract patterns, or implement code — builders, validators, and auditors handle their respective work via preloaded skills.
 
 ### Architecture
 
 | Role | Responsibility | Context Budget |
 |------|---------------|----------------|
-| **Orchestrator** (you) | Find phases, gate checks, spawn/shutdown teammates, route verdicts | Stays lean — only plan.md + teammate messages |
+| **Orchestrator** (you) | Parse groups, gate checks, spawn/shutdown agents, route verdicts, triage auditor findings, track cross-group state | Stays lean — only plan.md + teammate messages |
 | **Builder** (ephemeral) | Full phase implementation via `builder-workflow` skill | Fresh 200K per phase — never compacted |
 | **Validator** (ephemeral) | Independent code review via `/code-review`, then tests + typecheck | Fresh 200K per phase — eliminates bottleneck |
+| **Auditor** (ephemeral) | Group-level audit via `auditor-workflow` — cross-phase regressions, deferred items, plan drift | Fresh 200K per group — runs alone after all phases pass |
 
-### The 9-step workflow
+### Processing model
+
+```
+for each group (sequential):
+  1. Gate check all phases in group
+  2. Build phases (parallel where deps allow, max 2)
+  3. Validate each phase (PASS/FAIL routing)
+  4. When all group phases PASS → spawn auditor
+  5. Orchestrator reads auditor report and triages:
+     - Clean/Low → log deviations, continue to next group
+     - Medium → auto-spawn builder + validator to fix
+     - High/Critical → checkpoint with user, then fix
+  6. Track deviation summary for next group's auditor
+```
+
+### The 10-step workflow
 
 ```
 Step 1: Read plan.md + check plan review verdict
         ↓ (blocks if verdict is "No")
 Step 2: Check flow audit exists (created by /create-plan)
-        ↓ (blocks if "Major Restructuring Needed")
-Step 3: Find unblocked phases + create orchestrator task list
-        - TaskList check (compact recovery)
-        - TaskCreate per pending phase with dependency mirroring
-        - Check dependencies frontmatter for unblocked phases
+        ↓ (blocks if "Unusable" or "Major Restructuring Needed")
+Step 3: Parse groups from Phase Table + Group Summary
+        - Build execution plan: group order, phase dependencies
+        - TaskCreate per phase with group + dependency metadata
         ↓
-Step 4: Gate check each unblocked phase (mark task in_progress):
+Step 4: Gate check each phase in current group:
         - validate_no_placeholders.py
         - /review-plan phase review verdict
         ↓ (blocks if skeleton content or Critical issues)
-Step 5: Create team (first phase only)
-        - TeamCreate
+Step 5: Create team (first group only)
+        - TeamCreate, reused across all groups
         ↓
-Step 6: Spawn builders for unblocked phases (parallel, max 2-3)
+Step 6: Spawn builders for unblocked phases (parallel, max 2)
         - Fresh builder per phase with clean 200K context
-        - Minimal prompt: phase file path + plan folder
+        - Minimal prompt: phase file path + plan folder + domain skill
         - builder-workflow skill handles the rest
         ↓
 Step 7: Wait for builder completions → spawn fresh validator per phase
         ↓
 Step 8: Handle verdict:
-        - PASS → update plan.md + task (completed), shutdown builder + validator, wait for others
+        - PASS → update plan.md + task (completed), shutdown builder + validator
         - FAIL → shutdown builder + validator, spawn fresh builder with fix instructions
-        - When all active builders done → back to Step 3 (re-scan)
+        - When all group phases PASS → spawn auditor (runs alone)
         ↓
-Step 9: Cleanup (all done or error breakout)
-        - Shutdown all teammates
-        - TeamDelete
+Step 9: Triage auditor findings:
+        - Clean/Low → log deviation summary, continue to next group
+        - Medium → auto-spawn builder + validator to fix (no user input)
+        - High/Critical → checkpoint with user, present findings, ask for direction
+        - Pass deviation summary to next group's auditor
+        ↓ (loop back to Step 4 for next group)
+Step 10: Cleanup (all groups done or error breakout)
+         - Shutdown all teammates
+         - TeamDelete
 ```
 
-### Why builders and validators are ephemeral
+### Concurrency limits
 
-Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. This prevents:
+| Constraint | Limit | Why |
+|-----------|-------|-----|
+| Builders per batch | Max 2 | Context pressure from parallel completions |
+| Validators per batch | Max 2 (one per builder) | Each builder gets one validator |
+| **Total active agents** | **Max 4** | Orchestrator context budget |
+| Auditor | Runs alone | No builders/validators active during audit |
+| Batch overlap | **None** | Wait for current batch to fully complete before spawning next |
+
+### Why builders, validators, and auditors are ephemeral
+
+Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. After all group phases pass, an auditor gets a fresh context for cross-phase analysis. This prevents:
 
 - **Context contamination** — bad patterns from phase 2 don't bleed into phase 3
 - **Skill instruction compaction** — the `builder-workflow` skill is always fully loaded
 - **Stale reference data** — each builder reads fresh references for its phase type
 - **Validator bottleneck** — parallel builders each get their own validator instead of queuing for a single persistent one
+- **Drift snowballing** — group auditors catch issues incrementally rather than after 20 phases
+
+### Cross-group deviation tracking
+
+Each auditor receives a summary of previous groups' deviations in its spawn prompt. This creates a chain of awareness — if the "auth-system" group had naming inconsistencies, the "dashboard-ui" auditor specifically checks whether dashboard phases compound that drift.
 
 ### What the orchestrator does NOT do
 
@@ -206,12 +247,13 @@ Each phase gets a fresh builder and validator, each with a clean 200K context wi
 | Orchestrator invokes domain skills | Builder invokes domain skills (Step 3 of builder-workflow) |
 | Builder runs /code-review (self-review) | Validator runs /code-review (independent review) |
 | Orchestrator validates code | Validator handles all review and verification |
-| Builders persist across phases | Both builders and validators are ephemeral — fresh per phase |
+| Builders persist across phases | All agents are ephemeral — fresh per phase/group |
+| No group auditing | Auditor reviews cross-phase issues per group |
 
 ### Hard gates that block implementation
 
+- Flow audit says "Unusable" or "Major Restructuring Needed" → STOP
 - Plan review verdict is "No" → STOP
-- Flow audit says "Major Restructuring Needed" → STOP
 - Phase has placeholder content (`[To be detailed]`, `TBD`) → STOP
 - Phase review has Critical/High issues → FIX phase first
 - Validator FAIL repeats 3+ times on same phase → STOP, report to user
@@ -220,7 +262,7 @@ Each phase gets a fresh builder and validator, each with a clean 200K context wi
 
 ## 4. `/builder-workflow` — The Builder's Playbook
 
-**Files:** `SKILL.md` (192 lines) — preloaded into builder agents via `skills: [builder-workflow]` in agent config
+**Files:** `SKILL.md` (190 lines) — preloaded into builder agents via `skills: [builder-workflow]` in agent config
 
 **What it does:** Teaches builders how to handle an entire phase end-to-end. Not user-invocable — it activates automatically when a builder is spawned.
 
@@ -259,7 +301,7 @@ If a builder's context is compacted mid-phase (rare with fresh 200K windows):
 
 ## 5. `/validator-workflow` — The Validator's Playbook
 
-**Files:** `SKILL.md` (130+ lines) — preloaded into validator agents via `skills: [validator-workflow]` in agent config
+**Files:** `SKILL.md` (139 lines) — preloaded into validator agents via `skills: [validator-workflow]` in agent config
 
 **What it does:** Teaches validators how to handle validation end-to-end. Not user-invocable — it activates automatically when a validator is spawned.
 
@@ -290,7 +332,7 @@ E2E tests are scoped by extracting keywords from the phase title and globbing fo
 
 ## 6. `/code-review` — The Final Gate
 
-**Files:** `SKILL.md` (278 lines) + `checklist.md` (451 lines) + `delegation.md` + `references/CODE-REVIEW-TEMPLATE.md` + `scripts/validate_review.py`
+**Files:** `SKILL.md` (317 lines) + `checklist.md` (451 lines) + `delegation.md` + `references/CODE-REVIEW-TEMPLATE.md` + `scripts/validate_review.py`
 
 **What it does:** Called by the validator (independent review after each phase) to review actual code against codebase reference files, security requirements, and the phase's acceptance criteria. The builder never reviews its own code — this separation catches blind spots that self-review misses.
 
@@ -334,18 +376,19 @@ Output goes to `reviews/code/phase-NN.md` (separate from planning reviews in `re
 
 ---
 
-## 7. `/audit-plan` — The Holistic Check
+## 7. `/audit-plan` — The Structural Gate
 
-**Files:** `SKILL.md` (318 lines)
+**Files:** `SKILL.md` (340 lines)
 
-**Different from `/review-plan`:** This is a **flow audit**, not a template check. It analyzes the plan as a whole:
+**Different from `/review-plan`:** This is a **structural design audit**, not a template check. It analyzes the plan as a whole and runs BEFORE per-phase reviews:
 
-| `/review-plan` | `/audit-plan` |
+| `/audit-plan` | `/review-plan` |
 |----------------|---------------|
-| One file at a time | All phases together |
-| Template compliance + code patterns | Dependencies + data flow + ordering |
-| "Does this phase have all sections?" | "Do these phases connect coherently?" |
-| Run during creation | Run before implementing (3+ phases) |
+| All phases together | One file at a time |
+| Dependencies + data flow + ordering | Template compliance + code patterns |
+| "Do these phases connect coherently?" | "Does this phase have all sections?" |
+| Runs FIRST (before reviews) | Runs AFTER audit passes |
+| Tolerates rough edges (unreviewed phases) | Strict on template compliance + codebase patterns |
 
 ### What it catches
 
@@ -354,15 +397,19 @@ Output goes to `reviews/code/phase-NN.md` (separate from planning reviews in `re
 - Data flow inconsistencies (phases disagree on table names, patterns)
 - Ordering issues (consumer runs before producer)
 - Stale artifacts (deprecated files, mismatched statuses, broken links)
-- "Done" phases whose deliverables don't exist in the codebase
-- "Done" phases without passing code reviews
+- Fundamentally broken plans (bail-out with "Unusable" verdict)
 
-### Integration with /implement
+### Bail-out mechanism
 
-The `/create-plan` skill runs `/audit-plan` as Step 10 for plans with 3+ phases. The `/implement` orchestrator then gate-checks that the audit exists (Step 2) — if missing, it stops and asks the user to run the audit first. Results gate implementation:
+If the plan is fundamentally broken (circular deps, no coherent execution order, >50% missing dependencies), the audit bails out immediately with an "Unusable" verdict instead of completing the full analysis. This saves the user from waiting through a full audit of a plan that needs to be thrown out and rewritten.
+
+### Integration with /create-plan and /implement
+
+The `/create-plan` skill runs `/audit-plan` as **Step 6** for plans with 3+ phases — BEFORE spawning review validators. This prevents wasting time reviewing phases that have structural design issues. The `/implement` orchestrator then gate-checks that the audit exists (Step 2) — if missing, it stops and asks the user to run the audit first. Results gate both reviews and implementation:
 
 | Assessment | Behavior |
 |-----------|----------|
+| "Unusable" | Hard block — plan needs restructuring |
 | "Major Restructuring Needed" | Hard block — STOP |
 | "Significant Issues" | Soft block — warn user, ask whether to proceed |
 | "Minor Issues" or "Coherent" | Proceed |
@@ -379,8 +426,8 @@ The `/create-plan` skill runs `/audit-plan` as Step 10 for plans with 3+ phases.
 
 | Step | When | Scope | Focus |
 |------|------|-------|-------|
-| `/review-plan` | Before implementation | One file at a time | Template + codebase compliance |
-| `/audit-plan` | Before implementation | All phases together | Dependencies, data flow, ordering |
+| `/audit-plan` | Before reviews (structural gate) | All phases together | Dependencies, data flow, ordering |
+| `/review-plan` | After audit passes | One file at a time | Template + codebase compliance |
 | `/code-review` | During implementation | One phase's files | Code quality, security, patterns |
 | **Group audit** | **After each group completes** | **Connected phases** | Cross-phase regressions, deferred items, plan drift |
 
@@ -430,12 +477,13 @@ User: "/create-plan add notes feature"
   │   │   Groups: "data-layer" (P01-P02), "api-layer" (P03-P04), "ui-layer" (P05)
   │   ├─ Self-validate each phase (no placeholders, TDD ordering, files exist)
   │   └─ Checkpoint 2 → orchestrator relays completion summary
+  ├─ Flow audit (/audit-plan) → structural design checks pass (deps, ordering, data flow)
   ├─ Spawn review agents in batches of 4
   │   └─ Each agent calls: /review-plan plans/250214-notes phase NN
   │       ├─ Template compliance (12/12 sections?)
   │       ├─ Codebase compliance (code blocks match real patterns?)
   │       └─ Auto-fix Critical/High/Medium issues in phase files
-  └─ Flow audit (/audit-plan) → structural checks pass
+  └─ All reviews pass → ready for /implement
 
 User: "/implement plans/250214-notes"
   ├─ Check plan review verdict → must be "Yes"
@@ -533,7 +581,7 @@ Both `/review-plan` and `/code-review` read actual files from the codebase befor
 
 | Aspect | create-plan | review-plan | audit-plan | implement | builder-workflow | validator-workflow | auditor-workflow | code-review |
 |--------|-------------|-------------|------------|-----------|-----------------|-------------------|-----------------|-------------|
-| Lines | 390+ | 304 | 318 | 490+ | 210+ | 130+ | 380+ | 278 |
+| Lines | 419 | 346 | 364 | 490 | 190 | 139 | 367 | 317 |
 | Supporting files | 3 | 4 | 0 | 1 | 0 | 0 | 0 | 4 |
 | Validators used | 3 | 3 | 1 | 1 | 0 | 0 | 0 | 1 |
 | Auto-fix | No | Yes (Crit/High/Med) | No | Yes (via builders) | No (validator does it) | Yes (via /code-review) | No (read-only) | Yes (Crit/High) |

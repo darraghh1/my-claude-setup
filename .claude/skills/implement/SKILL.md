@@ -65,6 +65,7 @@ for each group (sequential):
 
 | Overall Assessment | Behaviour |
 |--------------------|----------|
+| **"Unusable"** | **HARD BLOCK:** STOP. Plan is fundamentally broken — needs restructuring. |
 | **"Major Restructuring Needed"** | **HARD BLOCK:** STOP. Report issues to user. |
 | **"Significant Issues"** | **SOFT BLOCK:** WARN user. Ask whether to proceed or fix. |
 | **"Minor Issues"** or **"Coherent"** | **PROCEED.** |
@@ -97,9 +98,8 @@ groups = [
 Groups are processed sequentially in the order listed in the Group Summary. Phases within a group are processed in parallel where dependencies allow.
 
 If all phases are done:
-1. Remove the plan's sidecar: `rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json`
-2. Report completion to the user
-3. Skip to Step 10 (cleanup)
+1. Report completion to the user
+2. Skip to Step 10 (cleanup)
 
 **3c: Create orchestrator tasks (first run only):**
 
@@ -147,12 +147,6 @@ Set audit tasks to be blocked by all phase tasks in their group.
 **3d: Determine current group and unblocked phases:**
 
 Find the first group with pending phases. Within that group, identify unblocked phases (all dependencies satisfied).
-
-**Update the statusline sidecar:**
-
-```bash
-mkdir -p ~/.cache/claude-statusline/plans && echo '{"plan":"PLAN_NAME","phase":PHASE_NUM,"group":"GROUP_NAME","updated":'$(date +%s)'}' > ~/.cache/claude-statusline/plans/PLAN_NAME.json
-```
 
 ## Step 4: Gate Check Phases
 
@@ -426,13 +420,7 @@ SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 
 2. **Delete team:** `TeamDelete()`
 
-3. **Remove this plan's statusline sidecar:**
-
-```bash
-rm -f ~/.cache/claude-statusline/plans/PLAN_NAME.json
-```
-
-4. **Report final summary to user:**
+3. **Report final summary to user:**
 
 ```
 ## Implementation Complete

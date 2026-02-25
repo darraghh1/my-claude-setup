@@ -64,9 +64,8 @@ When creating PRs:
 
 ## Feature Implementation Workflow
 
-1. **Plan** -- Use `/create-plan` to generate phases and structure
-2. **Review Plan** -- Use `/review-plan` to verify each phase
-3. **Implement** -- Use `/implement` to execute phases (handles TDD, coding, review loop)
-4. **Code Review** -- Use `/code-review` after implementation to verify quality
-5. **Verify** -- Run `pnpm verify` before committing
-6. **Commit** -- Follow conventional commits format with scope
+1. **Plan** -- Use `/create-plan` to generate phases and structure (includes `/audit-plan` for structural checks, then `/review-plan` for template + codebase compliance)
+2. **Implement** -- Use `/implement` to execute phases (handles TDD, coding, review loop)
+3. **Code Review** -- Use `/code-review` after implementation to verify quality
+4. **Verify** -- Run `pnpm verify` before committing
+5. **Commit** -- Follow conventional commits format with scope

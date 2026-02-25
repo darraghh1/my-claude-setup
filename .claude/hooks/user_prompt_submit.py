@@ -5,11 +5,10 @@
 # ///
 
 """
-UserPromptSubmit hook — logs prompts and stores last prompt
-for status line display.
+UserPromptSubmit hook — logs prompts and stores session history.
 
 Flags:
-  --store-last-prompt  Store prompt in session file for status line
+  --store-last-prompt  Store prompt in per-session file
 """
 
 import argparse
@@ -53,7 +52,7 @@ def log_user_prompt(input_data):
 
 
 def store_last_prompt(session_id, prompt):
-    """Store prompt in session file for status line display."""
+    """Store prompt in per-session file."""
     _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
     session_file = _SESSIONS_DIR / f"{session_id}.json"
@@ -85,7 +84,7 @@ def main():
         parser.add_argument(
             "--store-last-prompt",
             action="store_true",
-            help="Store last prompt for status line",
+            help="Store last prompt in per-session file",
         )
         args = parser.parse_args()
 
