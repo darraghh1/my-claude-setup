@@ -20,7 +20,7 @@ Existing plans in the repository (avoid naming conflicts):
 
 ## Architecture
 
-This skill is a **thin dispatcher**. It does NOT read codebase references, extract patterns, or create phase files. The planner handles all planning work via the preloaded `planner-workflow` skill.
+This skill is a **thin dispatcher**. It does NOT read codebase references, extract patterns, or create phase files. The planner handles all planning work via the `planner-workflow` skill (invoked as its first action).
 
 | Role | Responsibility |
 |------|---------------|
@@ -60,9 +60,33 @@ TeamCreate({
 })
 ```
 
+## Step 2.5: Codebase Exploration (Technical Discovery)
+
+Before the planner estimates complexity, spawn an Explore agent to read the actual codebase areas relevant to the feature. This separates "what does the code actually look like" from "is this technically feasible" — preventing plans built on assumptions instead of code reality.
+
+```
+Task({
+  description: "Explore codebase for {feature}",
+  subagent_type: "Explore",
+  model: "haiku",
+  prompt: `Explore the codebase to produce a grounding summary for planning a new feature: {feature description}
+
+Produce a concise summary covering:
+1. **Affected Files/Modules** — which files and directories will likely need changes
+2. **Existing Patterns** — naming conventions, file structure, import patterns in those areas
+3. **Reusable Components** — services, components, utilities that already exist and can be leveraged
+4. **Integration Points** — where the new feature connects to existing code (routes, services, database tables)
+5. **Potential Conflicts** — areas of complexity, recent changes that might complicate implementation
+
+Keep the summary under 2000 words. Focus on facts from the code, not assumptions.`
+})
+```
+
+Pass the exploration summary to the planner in Step 3 as context. This grounds the plan in code reality.
+
 ## Step 3: Spawn Planner
 
-Spawn a fresh planner with the requirements from Step 1. The `planner-workflow` skill is preloaded via the planner agent's `skills:` field.
+Spawn a fresh planner with the requirements from Step 1 and the exploration summary from Step 2.5. The planner's agent config instructs it to invoke `planner-workflow` as its first action.
 
 ```
 Task({
@@ -77,9 +101,12 @@ Task({
 Requirements:
 {requirements from Step 1 — include all clarified answers}
 
+Codebase Exploration Summary:
+{summary from Step 2.5 — paste the full exploration output here}
+
 Plan folder: plans/{YYMMDD}-{feature-name}
 
-Follow your preloaded planner-workflow skill. It teaches you how to:
+Your first action: invoke the planner-workflow skill via Skill({ skill: "planner-workflow" }). It teaches you how to:
 1. Read plan and phase templates from $CLAUDE_PROJECT_DIR/.claude/skills/create-plan/references/
 2. Explore codebase for reference patterns
 3. Create plan.md scaffold
@@ -318,6 +345,7 @@ When all reviews pass and audit clears (or is skipped for small plans):
       - Flow audit (3+ phases): overall assessment + Critical/High issue count
    4. **Overall verdict:** Ready/Not Ready for implementation
    5. **Critical issues** (if any) that need addressing before implementation
+   6. **Context hygiene:** "Consider running `/compact` before starting `/audit-plan` or `/review-plan` to free up context space."
 
 ---
 

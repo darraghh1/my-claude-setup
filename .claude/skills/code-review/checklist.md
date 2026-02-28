@@ -41,6 +41,22 @@ For each step in the phase document:
 
 ## Part 2: Code Quality Criteria
 
+### Code Reuse
+
+Before flagging missing functionality, check whether equivalent code already exists. Reinvented logic is a quality issue regardless of how clean the new code is.
+
+- [ ] **No reinvented utilities** — Grep for similar patterns in `lib/utils/`, adjacent files, and shared modules. Common hand-rolled candidates that usually have existing helpers:
+  - String manipulation (trimming, formatting, slugification)
+  - Path handling
+  - Environment/config lookups
+  - Type guards and narrowing functions
+- [ ] **No duplicate function logic** — if a new function does what an existing function already does, flag the duplicate and suggest the existing one
+- [ ] **No copy-paste blocks** — near-identical code differing by one parameter should be abstracted, not duplicated across files
+
+**How to check:** `Grep` for the core logic pattern or function signature in `lib/`, utility directories, and files adjacent to the changed ones.
+
+---
+
 ### TypeScript Standards
 
 - [ ] No `any` types — strict TypeScript usage
@@ -354,6 +370,18 @@ Load `/vercel-react-best-practices` to reference the full 57-rule guide.
 - [ ] Expensive computations memoized appropriately
 - [ ] `useTransition` for non-urgent state updates
 - [ ] Functional `setState` for stable callback references
+
+### Code Efficiency
+
+Language-agnostic efficiency checks — applicable to all code regardless of framework:
+
+- [ ] **No TOCTOU anti-pattern** — don't pre-check existence before operating (e.g., `if (file.exists()) file.read()`). Operate directly and handle the error. Pre-checks create race conditions and double the I/O.
+- [ ] **No overly broad reads** — loading an entire collection when filtering for one item, reading a full file when only a section is needed, or fetching all columns when only a few are used
+- [ ] **No missed concurrency** — independent operations run sequentially when `Promise.all()` would work. Look for multiple `await` calls in a row where the second doesn't depend on the first.
+- [ ] **No hot-path bloat** — new blocking work added to startup sequences, per-request handlers, or per-render paths where it could be deferred or cached
+- [ ] **No memory leaks** — event listeners registered without cleanup, unbounded caches/maps that grow forever, subscriptions not unsubscribed in cleanup functions
+
+---
 
 ### Code Quality Metrics
 

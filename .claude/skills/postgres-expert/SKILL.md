@@ -1,6 +1,7 @@
 ---
 name: postgres-expert
 description: "Create, review, and optimise PostgreSQL schemas, migrations, RLS policies, functions, and PgTAP tests for Supabase applications."
+argument-hint: "[migration-name or table-name]"
 metadata:
   version: 1.0.0
 ---

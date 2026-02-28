@@ -4,34 +4,47 @@
 # dependencies = []
 # ///
 
-"""PostToolUse validator for TypeScript/React files — agent-specific hook.
+"""PostToolUse validator for TypeScript/React files — Alfred-specific hook.
 
 Runs project-specific regex checks on .ts/.tsx files after builder/validator
 agents use Write/Edit. This is the AGENT LAYER — it catches project-specific
-pattern violations that the global post_tool_use.py hook doesn't cover.
+pattern violations and TypeScript checks offloaded from post_tool_use.py.
 
 Global hook (post_tool_use.py) covers:
-  - console.log/error, `any` types, missing server-only, React hooks without
-    use client, default exports, hardcoded secrets, admin client usage
+  - console.log/error (with Alfred-specific message), missing server-only
+    (Vite apps/addins only), default exports
 
-This hook covers PROJECT-SPECIFIC patterns:
-  - Wrong import paths (direct vs wrapper packages)
-  - Missing framework wrappers (auth, validation, etc.)
-  - Naming conventions specific to the project
-  - Component library compliance
+This hook covers:
+  - `: any` type usage (TypeScript safety)
+  - Hardcoded secrets (API keys, tokens, JWTs)
+  - Admin/service-role client without justification
+  - Component library compliance (Fluent UI v9 — no @mui)
+  - Direct @supabase/supabase-js imports (use wrapper packages)
 
-Reads PostToolUse JSON from stdin. Prints warnings to stdout.
+Reads PostToolUse JSON from stdin. Outputs additionalContext JSON to stdout.
 Always exits 0 (non-blocking) — warnings are informational.
 
 CUSTOMIZE: Adapt the checks in check_file() to match your project's patterns.
-See DigitalMastery's version for a MakerKit-specific example, or Alfred's
-version for a pnpm monorepo example.
 """
 
 import json
 import re
 import sys
 from pathlib import Path
+
+
+# Regex patterns for hardcoded secrets — each is (pattern, description)
+SECRET_PATTERNS = (
+    (r"""['"]sk-[a-zA-Z0-9_-]{20,}['"]""", "API key (sk-...)"),
+    (r"""['"]sk_live_[a-zA-Z0-9_-]+['"]""", "Stripe live key"),
+    (r"""['"]sk_test_[a-zA-Z0-9_-]+['"]""", "Stripe test key"),
+    (r"""['"]ghp_[a-zA-Z0-9]+['"]""", "GitHub personal access token"),
+    (r"""['"]eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.""", "JWT token"),
+    (
+        r"""(?:api[_-]?key|apikey|secret|password|token)\s*[:=]\s*['"][^'"]{8,}['"]""",
+        "Possible hardcoded secret",
+    ),
+)
 
 
 def check_file(file_path: str) -> list[str]:
@@ -59,77 +72,101 @@ def check_file(file_path: str) -> list[str]:
         return warnings
 
     # Classify the file
-    is_server_file = any(
-        keyword in file_path
-        for keyword in ("server-actions", "service", "loader", "api/")
+    is_vite_app = (
+        "packages/planner" in file_path
+        or "packages/admin-dashboard" in file_path
     )
+    is_addin = "connectors/outlook/addin" in file_path
     is_client_file = "'use client'" in content or '"use client"' in content
-    is_server_action_file = "server-actions" in file_path
+    is_supabase_package = "packages/supabase" in file_path
 
-    # ── CUSTOMIZE: Project-Specific Import Paths ─────────────────────────
-    #
-    # Check for direct imports that should use project wrappers instead.
-    # Example: Direct @supabase/ imports when your project has wrapper packages.
-    #
-    # for i, line in enumerate(lines, 1):
-    #     stripped = line.strip()
-    #     if stripped.startswith("//") or stripped.startswith("*"):
-    #         continue
-    #     if re.search(r"from\s+['\"]@supabase/", line):
-    #         if not re.search(r"import\s+type\b", line):
-    #             warnings.append(
-    #                 f"  Line {i}: Direct @supabase/ import — use your project's "
-    #                 f"wrapper package instead (e.g., @myproject/supabase)"
-    #             )
+    # ── Check 9: `: any` type usage ──────────────────────────────────────
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        # Match `: any`, `as any`, `<any>` but not words containing "any"
+        if ": any" in stripped or "as any" in stripped or "<any>" in stripped:
+            warnings.append(
+                f"Line {i}: `any` type detected — "
+                "use proper types or `unknown` instead"
+            )
+            break  # One warning is enough
 
-    # ── CUSTOMIZE: Wrong Import Path Aliases ─────────────────────────────
-    #
-    # Check for wrong path aliases (e.g., ~/app/home/ instead of ~/home/).
-    #
-    # for i, line in enumerate(lines, 1):
-    #     if re.search(r"from\s+['\"]~/app/", line):
-    #         warnings.append(
-    #             f"  Line {i}: Wrong path `~/app/...` — use `~/home/...`"
-    #         )
+    # ── Check 11: Hardcoded secrets ───────────────────────────────────────
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("*"):
+            continue
+        for pattern, description in SECRET_PATTERNS:
+            if re.search(pattern, line, re.IGNORECASE):
+                warnings.append(
+                    f"Line {i}: Possible hardcoded secret "
+                    f"({description}) — use environment variables"
+                )
+                break
+        else:
+            continue
+        break  # One secret warning is enough
 
-    # ── CUSTOMIZE: Component Library Compliance ──────────────────────────
-    #
-    # Check for usage of raw HTML or other UI libraries when your project
-    # uses a specific component library.
-    #
-    # Example for Fluent UI v9:
-    # if is_client_file and path.suffix == ".tsx":
-    #     if re.search(r"from\s+['\"]@mui/", content):
-    #         warnings.append(
-    #             "  Uses @mui — project uses @fluentui/react-components instead"
-    #         )
+    # ── Check 12: Admin/service-role client without justification ─────────
+    if re.search(
+        r"service.?role|admin.?client|SUPABASE_SERVICE_ROLE",
+        content,
+        re.IGNORECASE,
+    ):
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            # Skip comment lines — they can't be the violation
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            if re.search(
+                r"service.?role|admin.?client|SUPABASE_SERVICE_ROLE",
+                line,
+                re.IGNORECASE,
+            ):
+                # Check 3 lines above (including current) for justification
+                context_start = max(0, i - 4)
+                context_lines = "\n".join(lines[context_start:i])
+                if not re.search(
+                    r"//.*(?:admin|bypass|rls|oauth|callback|seed|webhook)",
+                    context_lines,
+                    re.IGNORECASE,
+                ):
+                    warnings.append(
+                        f"Line {i}: Service-role/admin client bypasses "
+                        "ALL RLS — add comment explaining why"
+                    )
+                break  # One warning is enough
 
-    # ── CUSTOMIZE: Server Action Patterns ────────────────────────────────
+    # ── Component Library Compliance (Fluent UI v9) ───────────────────────
     #
-    # Check for missing auth wrappers in server actions.
-    #
-    # if is_server_action_file:
-    #     has_use_server = bool(
-    #         re.search(r"""^['"]use server['"]""", content, re.MULTILINE)
-    #     )
-    #     if has_use_server and "enhanceAction" not in content:
-    #         warnings.append(
-    #             "  Server action missing auth wrapper"
-    #         )
+    # Alfred uses @fluentui/react-components. Block @mui imports in UI files.
+    if (is_vite_app or is_addin) and path.suffix == ".tsx":
+        if re.search(r"from\s+['\"]@mui/", content):
+            warnings.append(
+                "Uses @mui — project uses @fluentui/react-components instead. "
+                "Replace with the equivalent Fluent UI v9 component."
+            )
 
-    # ── CUSTOMIZE: Naming Conventions ────────────────────────────────────
+    # ── Direct Supabase Import Check ──────────────────────────────────────
     #
-    # Check for export naming conventions (e.g., Action suffix on server actions).
-    #
-    # if is_server_action_file:
-    #     for i, line in enumerate(lines, 1):
-    #         match = re.search(r"export\s+const\s+(\w+)\s*=", line)
-    #         if match:
-    #             name = match.group(1)
-    #             if not name.endswith("Action") and not name.endswith("Schema"):
-    #                 warnings.append(
-    #                     f"  Line {i}: Export `{name}` should end with 'Action'"
-    #                 )
+    # Alfred's packages should import from @alfred/supabase, not directly
+    # from @supabase/supabase-js. Direct imports bypass project middleware
+    # (auth, logging, error handling).
+    if not is_supabase_package:
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped.startswith("//") or stripped.startswith("*"):
+                continue
+            # Match import/require of @supabase/supabase-js but not type-only imports
+            if re.search(r"from\s+['\"]@supabase/supabase-js['\"]", line):
+                if not re.search(r"import\s+type\b", line):
+                    warnings.append(
+                        f"Line {i}: Direct @supabase/supabase-js import — "
+                        "use @alfred/supabase wrapper package instead"
+                    )
+                    break
 
     return warnings
 
@@ -153,10 +190,17 @@ def main():
     warnings = check_file(file_path)
 
     if warnings:
-        print(f"Project validator — {Path(file_path).name}:")
-        for warning in warnings:
-            print(warning)
-        print("(Fix these before marking task complete)")
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": (
+                    f"Alfred validator — {Path(file_path).name}:\n"
+                    + "\n".join(f"  - {w}" for w in warnings)
+                    + "\n(Fix these before marking task complete)"
+                ),
+            }
+        }
+        print(json.dumps(output))
 
     # Always exit 0 — warnings are informational, not blocking
     sys.exit(0)

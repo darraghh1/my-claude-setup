@@ -62,7 +62,6 @@ These files are part of the **static prefix**. Dynamic data here means cache mis
 |------------|-----------------|
 | SessionStart | `additionalContext` with compact git context OR no output |
 | UserPromptSubmit | Logging only, no `additionalContext` |
-| SubagentStart | `additionalContext` with tiered context injection |
 | PreCompact | Logging/backup only, no context injection |
 | All others (Stop, SessionEnd, Notification, etc.) | No prefix modification |
 
@@ -118,13 +117,6 @@ These files are part of the **static prefix**. Dynamic data here means cache mis
 | SessionStart hook | Read code — estimate `additionalContext` output chars | < 200 | 200–2K | > 2K |
 | UserPromptSubmit hook | Read code — does it emit `additionalContext`? | No output | < 500 | > 500 |
 | Built-in git status | Run `git status --porcelain \| wc -c` | < 2K | 2–10K | > 10K |
-| SubagentStart (compact) | Measure COMPACT_RULES string in hook code | < 1K | 1–3K | > 3K |
-| SubagentStart (full) | Measure compact + SKILL_REGISTRY + all rule files | < 15K | 15–25K | > 25K |
-
-**For SubagentStart, calculate both tiers:**
-1. **Compact tier** (explore, general-purpose agents): COMPACT_RULES constant size
-2. **Full tier** (builder, validator agents): COMPACT_RULES + SKILL_REGISTRY + rule files read from `~/.claude/rules/` minus skip list
-
 Use ~4 chars per token as the conversion estimate.
 
 **Also report:**
@@ -133,18 +125,17 @@ Use ~4 chars per token as the conversion estimate.
 
 **Overall scoring:**
 - PASS: All per-turn injections total < 2K chars
-- WARNING: 2–10K chars per turn, or full subagent tier > 20K chars
+- WARNING: 2–10K chars per turn
 - FAIL: > 10K chars injected per turn into the main conversation
 
 ---
 
 ### Check 6 — Fork Safety (Compaction & Subagents)
 
-**Read:** PreCompact hook code, SubagentStart hook code.
+**Read:** PreCompact hook code.
 
 **Verify:**
 - PreCompact hook does NOT modify the prefix (logging/backup only is correct)
-- SubagentStart hook injects via `additionalContext` only (message, not prefix)
 - No custom compaction logic that rebuilds the system prompt differently
 - Claude Code's built-in compaction preserves system prompt + tools by default
 

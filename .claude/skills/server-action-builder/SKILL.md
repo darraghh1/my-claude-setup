@@ -1,6 +1,7 @@
 ---
 name: server-action-builder
 description: "Create Next.js Server Actions with Zod validation, auth, and service layer integration. Generates schema + service + action files."
+argument-hint: "[feature-name]"
 metadata:
   version: 1.0.0
 ---

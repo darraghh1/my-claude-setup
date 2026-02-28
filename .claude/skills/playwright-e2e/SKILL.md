@@ -1,6 +1,7 @@
 ---
 name: playwright-e2e
 description: "Write, review, or debug end-to-end tests using Playwright for critical user flows."
+argument-hint: "[test-name or user-flow]"
 metadata:
   version: 1.0.0
 ---

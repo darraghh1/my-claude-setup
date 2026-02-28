@@ -3,6 +3,9 @@
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
   "teammateMode": "in-process",
+  "companyAnnouncements": [
+    "Pipeline: /create-plan → /audit-plan → /review-plan → /implement | Ad-hoc: /dev | Plans dir configurable via plansDirectory setting"
+  ],
   "hooks": {
     "PreToolUse": [
       {
@@ -26,6 +29,16 @@
             "timeout": 10000
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/typescript_validator.py",
+            "timeout": 10000
+          }
+        ]
       }
     ],
     "Notification": [
@@ -45,17 +58,6 @@
           {
             "type": "command",
             "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/stop.py --chat",
-            "timeout": 10000
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/subagent_stop.py",
             "timeout": 10000
           }
         ]
@@ -112,18 +114,6 @@
           {
             "type": "command",
             "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/post_tool_use_failure.py",
-            "timeout": 10000
-          }
-        ]
-      }
-    ],
-    "SubagentStart": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/subagent_start.py",
             "timeout": 10000
           }
         ]

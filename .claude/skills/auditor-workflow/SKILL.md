@@ -1,6 +1,6 @@
 ---
 name: auditor-workflow
-description: "Group-level implementation audit workflow for auditor agents. Handles reading connected phases, reviewing code reviews, checking deferred items, cross-phase impact analysis, verification, and structured reporting to the orchestrator. Preloaded into auditor agents via skills: field — not user-invocable."
+description: "Group-level implementation audit workflow for auditor agents. Handles loading project rules, reading connected phases, reviewing code reviews, checking deferred items, cross-phase impact analysis, verification, and structured reporting to the orchestrator. Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
   version: 1.0.0
@@ -18,10 +18,26 @@ Per-phase code reviews check each brick. This audit checks whether the wall is s
 
 | Problem | Why Per-Phase Review Misses It |
 |---------|-------------------------------|
+| Missing coding conventions | Teammates don't inherit parent rules — auditor flags violations it can't see |
 | Cross-phase regressions | Each reviewer only sees their own phase |
 | Deferred items never actioned | No subsequent step checks if they were fixed |
 | Plan drift | Individual phases can pass review while collectively deviating from intent |
 | Previous group deviations compounding | Each group auditor only sees its own group without explicit cross-group context |
+
+## Step 0: Load Project Rules
+
+Teammates don't inherit all parent rules — only `alwaysApply` rules load natively. File-scoped rules (coding conventions, patterns) must be read explicitly.
+
+Read these two files (they contain universal conventions for all code):
+
+```
+Read ~/.claude/rules/coding-style.md
+Read ~/.claude/rules/patterns.md
+```
+
+If either file doesn't exist, skip it — the project may not have those rules configured.
+
+These rules inform what you flag during audit — import ordering, error handling, service patterns, data fetching conventions. Without them, you can't catch convention violations.
 
 ## Step 1: Read Group Context
 

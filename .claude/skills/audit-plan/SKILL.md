@@ -2,6 +2,7 @@
 name: audit-plan
 description: "Structural audit of implementation plans — dependencies, data flow, ordering, stale artifacts. Runs BEFORE per-phase reviews to catch design-level issues early. Bails on fundamentally broken plans."
 argument-hint: "[plan-folder]"
+disable-model-invocation: true
 context: fork
 agent: general-purpose
 model: sonnet
@@ -313,6 +314,7 @@ After writing the report, return to the main agent:
 3. **Critical/High issues count** — how many need attention before implementation continues
 4. **Top 3 findings** — the most impactful discoveries
 5. **Recommendation** — whether to proceed, fix first, or restructure
+6. **Context hygiene:** "Consider running `/compact` before starting the next workflow step."
 
 ---
 

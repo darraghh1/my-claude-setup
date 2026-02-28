@@ -7,6 +7,12 @@
 # Claude Code ephemeral data (sessions, logs — per-user, not shareable)
 .claude/data/
 
+# Claude Code local overrides (per-developer, not shareable)
+.claude/settings.local.json
+
+# Hook logs (JSONL append-only, per-developer)
+.claude/hooks/logs/
+
 # Playwright MCP local state
 .playwright-mcp/
 

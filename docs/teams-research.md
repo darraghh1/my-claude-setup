@@ -21,10 +21,10 @@ Team agents (teammates spawned via the `Task` tool) operate in a different conte
 | **CLAUDE.md** | Yes | **No** — parent's cached version | Changes made mid-session are invisible to teammates |
 | **Rules** (`.claude/rules/`) | Partial — 3 of 15 observed | No — parent cache | Only `git-workflow.md`, `mcp-tools.md`, `security.md` were reported. May be selective injection or summarisation artifact |
 | **Skills registry** | **No** | n/a | Teammates see zero registered skills. The `Skill` tool exists but the registry listing available skills is absent |
-| **Skills (preloaded)** | Yes, if `skills:` in agent frontmatter | n/a | Agent-typed subagents (e.g., `builder`) get their `skills:` field preloaded into system prompt |
-| **MCP tools** | **No** | n/a | Zero MCP tools available. Teammates cannot use Playwright, Tavily, Context7, etc. |
+| **Skills (preloaded)** | **No** — `skills:` frontmatter NOT preloaded | n/a | ~~Agent-typed subagents get skills preloaded~~ **TESTED 2026-02-27: `skills:` field is advisory only. Agents must explicitly invoke via `Skill()`.** |
+| **MCP tools** | **Yes** — available regardless of `tools:` allowlist | n/a | ~~Zero MCP tools available~~ **TESTED 2026-02-27: MCP tools bypass agent `tools:` frontmatter entirely.** |
 | **MEMORY.md** | Yes | No — parent cache | Auto memory is injected |
-| **SubagentStart hook** | Yes | **Yes — fresh** | Only injection point that runs at spawn time. Reads from disk, not cache |
+| **SubagentStart hook** | **No** — does NOT fire for team teammates | n/a | ~~Only injection point that runs at spawn time~~ **TESTED 2026-02-27: Hook fires for non-team subagents only. Team teammates (spawned via Task with `team_name`) never receive hook output.** |
 | **Working directory** | Yes | Yes | Correct working directory inherited from parent |
 | **Git status** | Yes | No — snapshot from session start | Stale by the time teammates are spawned |
 | **Environment info** | Yes | Yes | Platform, shell, model identification |
@@ -53,18 +53,18 @@ Parent session (full context)
                             ├── CLAUDE.md (parent's stale cache)
                             ├── ~3 rule files (partial, stale)
                             ├── Agent definition (if agent-typed)
-                            ├── Preloaded skills (from agent's skills: field)
-                            ├── SubagentStart hook injection (FRESH)
+                            ├── NO preloaded skills (skills: field is advisory only)
+                            ├── NO SubagentStart hook (doesn't fire for teammates)
                             ├── MEMORY.md (stale cache)
-                            ├── Skill tool (available, but no registry)
-                            └── NO MCP tools
+                            ├── Skill tool (available — can invoke skills explicitly)
+                            └── MCP tools (available — bypass tools: allowlist)
 ```
 
 ## Key Insights
 
-### The SubagentStart hook is the only fresh injection point
+### ~~The SubagentStart hook is the only fresh injection point~~ (DISPROVEN)
 
-Everything else comes from the parent's cached context. The hook runs at spawn time and reads from disk, making it the only way to inject up-to-date information.
+**TESTED 2026-02-27:** SubagentStart hooks do NOT fire for team teammates. The workaround is self-loading context: workflow skills include a Step 0 that reads critical rule files (`coding-style.md`, `patterns.md`) as the agent's first action.
 
 ### Skill invocation works without the registry
 
@@ -74,7 +74,7 @@ The `Skill` tool resolves skill names to disk paths. A teammate can call `Skill(
 
 ### Agent-typed subagents get more context
 
-Spawning with `subagent_type: "builder"` loads the `team/builder.md` agent definition as system prompt, including its `skills: [builder-workflow]` preloaded skill. A `general-purpose` subagent gets none of this.
+Spawning with `subagent_type: "builder"` loads the `team/builder.md` agent definition as system prompt. However, the `skills: [builder-workflow]` field is **advisory only** — the skill is NOT preloaded. The agent body must instruct the builder to invoke it explicitly via `Skill()`. A `general-purpose` subagent gets none of this.
 
 ### Rules are the biggest gap
 
@@ -103,11 +103,12 @@ The hook reads rule files from `~/.claude/rules/` at spawn time, skipping `git-w
 
 ### Still to test
 
-1. **Agent-typed subagent context** — verify a `builder` subagent sees its preloaded `builder-workflow` skill and can invoke domain skills via the `Skill` tool
-2. **Skill tool resolution** — confirm `Skill({ skill: "postgres-expert" })` works for subagents even without the skill registry in their system prompt
+1. ~~**Agent-typed subagent context** — verify a `builder` subagent sees its preloaded `builder-workflow` skill~~ **TESTED 2026-02-27: `skills:` NOT preloaded. Agents must invoke explicitly.**
+2. ~~**Skill tool resolution** — confirm `Skill({ skill: "postgres-expert" })` works for subagents~~ **TESTED 2026-02-27: Works. Skill tool resolves without registry.**
 
-## Open Questions
+## ~~Open Questions~~ Resolved Questions (2026-02-27)
 
-- Why were only 3 of 15 rules observed in the initial test? Likely the general-purpose teammate was summarising selectively — the full CLAUDE.md + rules blob is injected but lengthy. The enhanced hook now injects rules independently of the parent cache.
-- Does the `Skill` tool work for teammates in practice? The tool exists in their tool list, but the registry might be needed for resolution. Needs testing with an agent-typed subagent.
-- Would preloading more skills via the `skills:` field be more reliable than on-demand invocation? Preloading guarantees availability but costs tokens (each preloaded skill's full SKILL.md is in the system prompt). On-demand invocation is cheaper but depends on the `Skill` tool resolving correctly.
+- ~~Why were only 3 of 15 rules observed?~~ **Answer:** Only `alwaysApply: true` and no-frontmatter rules auto-load (5 rules). `paths:`-scoped rules do NOT load for teammates.
+- ~~Does the Skill tool work for teammates?~~ **Answer:** Yes. `Skill({ skill: "name" })` resolves correctly for teammates even without the skill registry listing.
+- ~~Would preloading skills be more reliable?~~ **Answer:** Moot — `skills:` frontmatter doesn't actually preload. The working pattern is: agent body says "invoke X as first action" → agent calls `Skill()` → skill content loads.
+- **`tools:` frontmatter** is also advisory only — agents can call any tool regardless of allowlist. The `subagent_type` system definition determines real boundaries.

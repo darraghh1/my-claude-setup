@@ -1,6 +1,6 @@
 ---
 name: validator-workflow
-description: "Phase-level validation workflow for validator agents. Handles reading phase files, running /code-review, conditional verification (unit tests + typecheck + E2E/DB tests based on phase type), determining verdict, and reporting to the orchestrator. Preloaded into validator agents via skills: field — not user-invocable."
+description: "Phase-level validation workflow for validator agents. Handles loading project rules, reading phase files, running /code-review, conditional verification (unit tests + typecheck + E2E/DB tests based on phase type), determining verdict, and reporting to the orchestrator. Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
   version: 1.0.0
@@ -16,10 +16,26 @@ The user experienced validators that ran shallow checks, missed pattern deviatio
 
 | Step | Prevents |
 |------|----------|
+| Load project rules | Reviewing without knowing coding conventions (teammates don't inherit parent rules) |
 | Read phase completely | Reviewing against wrong acceptance criteria |
 | Run /code-review | Self-review blind spots — builder never reviews its own code |
 | Conditional verification | Frontend bugs missed without E2E, DB bugs missed without PgTAP |
 | Actionable FAIL reports | Fix builders guessing at what's broken, producing more failures |
+
+## Step 0: Load Project Rules
+
+Teammates don't inherit all parent rules — only `alwaysApply` rules load natively. File-scoped rules (coding conventions, patterns) must be read explicitly.
+
+Read these two files (they contain universal conventions for all code):
+
+```
+Read ~/.claude/rules/coding-style.md
+Read ~/.claude/rules/patterns.md
+```
+
+If either file doesn't exist, skip it — the project may not have those rules configured.
+
+These rules inform what you flag during review — import ordering, error handling, service patterns, data fetching conventions.
 
 ## Step 1: Read the Phase
 

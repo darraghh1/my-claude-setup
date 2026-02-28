@@ -23,7 +23,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from utils.constants import ensure_session_log_dir
+from utils.constants import ensure_session_log_dir, log_jsonl
 
 CONFIG_PATH = Path(__file__).parent / "config" / "blocked-commands.json"
 
@@ -207,6 +207,12 @@ def main():
 
         with open(log_path, "w") as f:
             json.dump(log_data, f, indent=2)
+
+        # JSONL append-only log (grep-able across sessions)
+        log_jsonl("PreToolUse", session_id, {
+            "tool": tool_name,
+            "summary": summarize_tool_input(tool_name, tool_input),
+        })
 
         sys.exit(0)
 

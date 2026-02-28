@@ -12,19 +12,20 @@ How the planning skills work together as an assembly line — from feature idea 
                                                 └── for each group (sequential):
                                                     │
                                                     ├── build phases (parallel where deps allow, max 2):
-                                                    │   spawn builder ──→ builder-workflow
-                                                    │        │              ├── find reference
-                                                    │        │              ├── invoke domain skill
-                                                    │        │              ├── TDD → implement → test
-                                                    │        │              └── report completion
+                                                    │   spawn builder (worktree) ──→ builder-workflow
+                                                    │        │                        ├── find reference
+                                                    │        │                        ├── invoke domain skill
+                                                    │        │                        ├── TDD → implement → test
+                                                    │        │                        ├── commit to worktree branch
+                                                    │        │                        └── report completion
                                                     │        │
-                                                    │   orchestrator ──→ validator
+                                                    │   orchestrator merges worktree branch → validator
                                                     │        │              ├── validator-workflow
                                                     │        │              ├── /code-review + auto-fix
                                                     │        │              ├── tests + typecheck + E2E/DB
                                                     │        │              └── PASS / FAIL verdict
                                                     │        │
-                                                    │   PASS → next phase / FAIL → fresh builder
+                                                    │   PASS → next phase / FAIL → revert merge, fresh builder (worktree)
                                                     │
                                                     ├── all group phases done → spawn auditor
                                                     │   auditor ──→ auditor-workflow
@@ -48,9 +49,9 @@ Each skill has hard gates preventing progression until quality is met. Every gua
 
 ## 1. `/create-plan` — The Orchestrator
 
-**Files:** `SKILL.md` (416 lines) + `references/PLAN-TEMPLATE.md` + `references/PHASE-TEMPLATE.md` + `references/delegation-guide.md`
+**Files:** `SKILL.md` (~450 lines) + `references/PLAN-TEMPLATE.md` + `references/PHASE-TEMPLATE.md` + `references/delegation-guide.md`
 
-**What it does:** Acts as a **thin dispatcher** that clarifies requirements with the user, spawns an ephemeral planner agent for plan/phase creation, then spawns validators for review. The orchestrator does NOT read templates, explore the codebase, or create files — the planner handles all planning work via the preloaded `planner-workflow` skill.
+**What it does:** Acts as a **thin dispatcher** that clarifies requirements with the user, spawns an Explore agent to ground the plan in code reality, then spawns an ephemeral planner agent for plan/phase creation, and finally validators for review. The orchestrator does NOT read templates, explore the codebase, or create files — the exploration agent and planner handle their respective work.
 
 ### Architecture
 
@@ -60,13 +61,14 @@ Each skill has hard gates preventing progression until quality is met. Every gua
 | **Planner** (ephemeral) | Read templates, explore codebase references, create plan.md + all phase files, self-validate. Reports at two checkpoints for user course-correction. |
 | **Validator** (ephemeral) | Run `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
 
-### The 9-step workflow
+### The 10-step workflow
 
 | Step | What Happens | Why It Exists |
 |------|-------------|---------------|
 | 1. Clarify | `AskUserQuestion` to resolve ambiguity | User experienced 20-phase plans built on wrong assumptions |
 | 2. Create team | `TeamCreate` for planner + validators | Enables message routing between agents |
-| 3. Spawn planner | Fresh ephemeral agent with 200K context, preloaded `planner-workflow` skill | Planner reads templates, explores codebase, creates all artifacts |
+| 2.5. Codebase exploration | Spawn Explore agent (haiku) to produce grounding summary | Separates "what does the code look like" from "is this feasible" — prevents plans built on assumptions |
+| 3. Spawn planner | Fresh ephemeral agent with 200K context, invokes `planner-workflow` skill as first action + exploration summary | Planner reads templates, creates all artifacts grounded in code reality |
 | 4. User checkpoint — plan review | Orchestrator relays planner's plan summary for user approval | Catches wrong assumptions before phases are written |
 | 5. User checkpoint — phases complete | Orchestrator relays completion summary | User verifies phase breakdown before review |
 | 6. Flow audit | `/audit-plan` for 3+ phases — catches structural/design issues | Structural issues invalidate all per-phase review work; bail out early on broken plans |
@@ -145,16 +147,16 @@ When `/create-plan` spawns review agents, the `delegation.md` enforces:
 
 ## 3. `/implement` — The Thin Dispatcher
 
-**Files:** `SKILL.md` (490 lines) + `references/team-operations.md`
+**Files:** `SKILL.md` (~510 lines) + `references/team-operations.md`
 
-**What it does:** Acts as a thin dispatcher that processes phases in **groups** — connected phases that build the same feature area. For each group: spawns ephemeral builders and validators per phase, then an auditor for cross-phase analysis. It does NOT read references, extract patterns, or implement code — builders, validators, and auditors handle their respective work via preloaded skills.
+**What it does:** Acts as a thin dispatcher that processes phases in **groups** — connected phases that build the same feature area. For each group: spawns ephemeral builders (in isolated git worktrees) and validators per phase, then an auditor for cross-phase analysis. It does NOT read references, extract patterns, or implement code — builders, validators, and auditors handle their respective work via workflow skills (invoked as their first action).
 
 ### Architecture
 
 | Role | Responsibility | Context Budget |
 |------|---------------|----------------|
 | **Orchestrator** (you) | Parse groups, gate checks, spawn/shutdown agents, route verdicts, triage auditor findings, track cross-group state | Stays lean — only plan.md + teammate messages |
-| **Builder** (ephemeral) | Full phase implementation via `builder-workflow` skill | Fresh 200K per phase — never compacted |
+| **Builder** (ephemeral) | Full phase implementation via `builder-workflow` skill in isolated git worktree. Commits to worktree branch; orchestrator merges before validation. | Fresh 200K per phase — never compacted |
 | **Validator** (ephemeral) | Independent code review via `/code-review`, then tests + typecheck | Fresh 200K per phase — eliminates bottleneck |
 | **Auditor** (ephemeral) | Group-level audit via `auditor-workflow` — cross-phase regressions, deferred items, plan drift | Fresh 200K per group — runs alone after all phases pass |
 
@@ -192,15 +194,18 @@ Step 5: Create team (first group only)
         - TeamCreate, reused across all groups
         ↓
 Step 6: Spawn builders for unblocked phases (parallel, max 2)
-        - Fresh builder per phase with clean 200K context
+        - Fresh builder per phase in isolated git worktree
         - Minimal prompt: phase file path + plan folder + domain skill
         - builder-workflow skill handles the rest
         ↓
-Step 7: Wait for builder completions → spawn fresh validator per phase
+Step 7: Wait for builder completions:
+        7a: Merge worktree branch into main tree
+        7b: Spawn fresh validator per phase (on main tree)
+        7c: Wait for all validator verdicts in batch
         ↓
 Step 8: Handle verdict:
         - PASS → update plan.md + task (completed), shutdown builder + validator
-        - FAIL → shutdown builder + validator, spawn fresh builder with fix instructions
+        - FAIL → git revert merge, shutdown builder + validator, spawn fresh builder (worktree) with fix instructions
         - When all group phases PASS → spawn auditor (runs alone)
         ↓
 Step 9: Triage auditor findings:
@@ -226,13 +231,14 @@ Step 10: Cleanup (all groups done or error breakout)
 
 ### Why builders, validators, and auditors are ephemeral
 
-Each phase gets a fresh builder and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. After all group phases pass, an auditor gets a fresh context for cross-phase analysis. This prevents:
+Each phase gets a fresh builder (in an isolated git worktree) and validator, each with a clean 200K context window. After the review cycle completes (PASS or FAIL resolution), both are shut down. After all group phases pass, an auditor gets a fresh context for cross-phase analysis. This prevents:
 
 - **Context contamination** — bad patterns from phase 2 don't bleed into phase 3
 - **Skill instruction compaction** — the `builder-workflow` skill is always fully loaded
 - **Stale reference data** — each builder reads fresh references for its phase type
 - **Validator bottleneck** — parallel builders each get their own validator instead of queuing for a single persistent one
 - **Drift snowballing** — group auditors catch issues incrementally rather than after 20 phases
+- **File corruption from parallel builds** — worktree isolation means two builders can't step on the same files; the orchestrator merges sequentially
 
 ### Cross-group deviation tracking
 
@@ -248,6 +254,7 @@ Each auditor receives a summary of previous groups' deviations in its spawn prom
 | Builder runs /code-review (self-review) | Validator runs /code-review (independent review) |
 | Orchestrator validates code | Validator handles all review and verification |
 | Builders persist across phases | All agents are ephemeral — fresh per phase/group |
+| Builders share the working directory | Builders run in isolated git worktrees — orchestrator merges branches |
 | No group auditing | Auditor reviews cross-phase issues per group |
 
 ### Hard gates that block implementation
@@ -262,21 +269,23 @@ Each auditor receives a summary of previous groups' deviations in its spawn prom
 
 ## 4. `/builder-workflow` — The Builder's Playbook
 
-**Files:** `SKILL.md` (190 lines) — preloaded into builder agents via `skills: [builder-workflow]` in agent config
+**Files:** `SKILL.md` (~220 lines) — invoked by builder agents as their first action via `Skill({ skill: "builder-workflow" })`
 
-**What it does:** Teaches builders how to handle an entire phase end-to-end. Not user-invocable — it activates automatically when a builder is spawned.
+**What it does:** Teaches builders how to handle an entire phase end-to-end in an isolated git worktree. Not user-invocable — builders invoke it explicitly as Step 1 of their agent instructions.
 
-### The 7-step workflow
+### The 9-step workflow
 
 | Step | What Happens | Why It Exists |
 |------|-------------|---------------|
+| 0. Load project rules | Read `coding-style.md` + `patterns.md` | Teammates don't inherit all parent rules — file-scoped rules must be read explicitly |
 | 1. Read phase | Extract requirements, steps, acceptance criteria | Missing requirements = wrong code |
 | 2. Pre-flight tests | `pnpm test` (skip for phase 01) | Catches broken tests from previous phases |
 | 3. Find reference + skill | Glob for reference file, invoke domain skill | Ground truth for patterns — not guessing |
 | 4. Create task list | `TaskCreate` for each implementation step | Tasks survive context compacts within a phase |
 | 5. Implement | TDD (Step 0) first, then remaining steps | Untested code ships bugs |
 | 6. Final verification | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | All must pass before reporting |
-| 7. Report completion | `SendMessage` to orchestrator | Triggers independent validator review |
+| 7. Commit changes | `git add -A && git commit` in worktree branch | Uncommitted worktree changes can't be merged — the commit IS the handoff to the orchestrator |
+| 8. Report completion | `SendMessage` to orchestrator | Triggers worktree merge + independent validator review |
 
 ### Domain skill mapping
 
@@ -301,14 +310,15 @@ If a builder's context is compacted mid-phase (rare with fresh 200K windows):
 
 ## 5. `/validator-workflow` — The Validator's Playbook
 
-**Files:** `SKILL.md` (139 lines) — preloaded into validator agents via `skills: [validator-workflow]` in agent config
+**Files:** `SKILL.md` (~155 lines) — invoked by validator agents as their first action via `Skill({ skill: "validator-workflow" })`
 
-**What it does:** Teaches validators how to handle validation end-to-end. Not user-invocable — it activates automatically when a validator is spawned.
+**What it does:** Teaches validators how to handle validation end-to-end. Not user-invocable — validators invoke it explicitly as Step 1 of their agent instructions.
 
-### The 6-step workflow
+### The 7-step workflow
 
 | Step | What Happens | Why It Exists |
 |------|-------------|---------------|
+| 0. Load project rules | Read `coding-style.md` + `patterns.md` | These rules inform what gets flagged during review |
 | 1. Read phase | Extract `skill:` field, acceptance criteria, files modified | Determines which extra tests to run |
 | 2. Run /code-review | Invoke `/code-review` skill (reference-grounded, auto-fix) | Builder never reviews its own code |
 | 3. Run verification | `pnpm test` + `pnpm run typecheck` + conditional E2E/DB | Catches issues from auto-fixes and phase-type-specific regressions |
@@ -418,7 +428,7 @@ The `/create-plan` skill runs `/audit-plan` as **Step 6** for plans with 3+ phas
 
 ## 8. Group Auditing — The Incremental Post-Mortem
 
-**Files:** `auditor-workflow/SKILL.md` (internal, preloaded into auditor agent) + `agents/team/auditor.md`
+**Files:** `auditor-workflow/SKILL.md` (~383 lines, invoked by auditor as first action) + `agents/team/auditor.md`
 
 **What it does:** After each group of connected phases completes the build/validate cycle, an auditor reviews the group for problems that per-phase reviews structurally cannot catch. This happens incrementally — audit after each group, not after the whole plan — so drift is caught early while it's still cheap to fix.
 
@@ -468,7 +478,8 @@ Each auditor receives a summary of previous groups' deviations in its spawn prom
 ```
 User: "/create-plan add notes feature"
   ├─ Clarify → AskUserQuestion
-  ├─ Spawn planner agent (Opus, fresh 200K context)
+  ├─ Explore codebase (haiku) → grounding summary of affected files, patterns, reusable components
+  ├─ Spawn planner agent (Opus, fresh 200K context + exploration summary)
   │   ├─ Read templates (PLAN-TEMPLATE.md, PHASE-TEMPLATE.md)
   │   ├─ Read codebase references (server-actions.ts, service.ts, etc.)
   │   ├─ Write plan.md with Phase Table + Group Summary
@@ -493,10 +504,10 @@ User: "/implement plans/250214-notes"
   ├─ GROUP 1: "data-layer" (P01, P02 — no inter-dependencies)
   │   ├─ Gate check both: no placeholders, phase reviews pass
   │   ├─ TeamCreate (first run only)
-  │   ├─ Spawn builders in parallel (max 2 per batch)
-  │   │   ├─ builder-1: Phase 01 → /postgres-expert → TDD → verify → "done"
-  │   │   └─ builder-2: Phase 02 → /service-builder → TDD → verify → "done"
-  │   ├─ As each completes → spawn fresh validator → /code-review → PASS
+  │   ├─ Spawn builders in parallel (max 2, each in isolated worktree)
+  │   │   ├─ builder-1 (worktree): Phase 01 → /postgres-expert → TDD → verify → commit → "done"
+  │   │   └─ builder-2 (worktree): Phase 02 → /service-builder → TDD → verify → commit → "done"
+  │   ├─ As each completes → merge worktree branch → spawn fresh validator → /code-review → PASS
   │   ├─ All group phases done → shutdown builders + validators
   │   ├─ Spawn auditor (Opus, runs alone)
   │   │   ├─ Read both phases + their code reviews
@@ -567,6 +578,10 @@ Good: `"Create app/home/[account]/roles/_components/change-role-dropdown.tsx. Pr
 
 Reflects a fundamental constraint of AI-assisted development: each phase must fit in one context window. A 25-phase plan sounds excessive to humans, but for Claude it means each phase gets full attention without losing context mid-implementation.
 
+### Passive domain context over on-demand invocation
+
+The [Vercel skills evaluation](research/vercel-skills-findings.md) showed that passive context (always loaded) achieves 100% compliance, while on-demand skill invocation maxes out at 53-79% even with explicit instructions. The `domain-patterns.md` rule compresses critical patterns from all 9 domain knowledge skills into ~6.8KB of passive context. It uses `alwaysApply: true` so it loads natively for all agents (including team teammates) — no skill invocation required. Each section has a `ref:` pointer to the full SKILL.md for deep reading when the compressed patterns aren't enough (retrieval-led reasoning).
+
 ### Codebase grounding over static checklists
 
 Both `/review-plan` and `/code-review` read actual files from the codebase before flagging issues. This prevents flagging things that are correct in this specific codebase, and catches violations that a static checklist might miss.
@@ -581,10 +596,10 @@ Both `/review-plan` and `/code-review` read actual files from the codebase befor
 
 | Aspect | create-plan | review-plan | audit-plan | implement | builder-workflow | validator-workflow | auditor-workflow | code-review |
 |--------|-------------|-------------|------------|-----------|-----------------|-------------------|-----------------|-------------|
-| Lines | 419 | 346 | 364 | 490 | 190 | 139 | 367 | 317 |
+| Lines | ~450 | 346 | 364 | ~510 | ~220 | ~155 | ~383 | 317 |
 | Supporting files | 3 | 4 | 0 | 1 | 0 | 0 | 0 | 4 |
 | Validators used | 3 | 3 | 1 | 1 | 0 | 0 | 0 | 1 |
 | Auto-fix | No | Yes (Crit/High/Med) | No | Yes (via builders) | No (validator does it) | Yes (via /code-review) | No (read-only) | Yes (Crit/High) |
-| Execution model | Thin dispatcher + planner | Single agent (forked) | Single agent (forked) | Thin dispatcher + team | Preloaded into builder | Preloaded into validator | Preloaded into auditor | Single agent (forked) |
+| Execution model | Thin dispatcher + planner | Single agent (forked) | Single agent (forked) | Thin dispatcher + team | Invoked by builder (first action) | Invoked by validator (first action) | Invoked by auditor (first action) | Single agent (forked) |
 | Model | Opus (planner) | Sonnet | Sonnet | Opus (orchestrator) | Opus (builder) | Opus (validator) | Opus (auditor) | Sonnet |
 | User-invocable | Yes | Yes | Yes | Yes | No | No | No | Yes |

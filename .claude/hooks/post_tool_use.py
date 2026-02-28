@@ -12,20 +12,27 @@ violations and injects warnings via additionalContext so Claude
 fixes them immediately rather than waiting for verification.
 
 Quality checks (TypeScript/TSX files only):
-  1. console.log / console.error usage (should use proper logger)
-  2. Missing `import 'server-only'` in server files
-  3. Usage of `: any` type (should use proper types or unknown)
-  4. React hooks without 'use client' directive
+  1. console.log / console.error usage (should use createLogger())
+  2. Missing `import 'server-only'` in server files (Vite apps and addins only)
+  3. [MOVED] `: any` type — now owned by typescript_validator.py
+  4. [DISABLED] React hooks without 'use client' — Alfred has no Next.js App Router
   5. Default exports for non-page/layout components
-  6. Hardcoded secrets (API keys, tokens, JWTs)
-  7. Service-role / admin Supabase client without justification comment
+  6. [MOVED] Hardcoded secrets — now owned by typescript_validator.py
+  7. [MOVED] Service-role / admin client — now owned by typescript_validator.py
+
+TypeScript pattern checks (any, secrets, admin client) are owned by
+typescript_validator.py to avoid duplicate warnings when both hooks run.
 """
 
 import json
 import re
 import sys
 from pathlib import Path
-from utils.constants import ensure_session_log_dir
+from utils.constants import ensure_session_log_dir, log_jsonl
+
+EXCLUDES_CONFIG_PATH = (
+    Path(__file__).parent / "config" / "quality-check-excludes.json"
+)
 
 # File extensions to run quality checks on
 TS_EXTENSIONS = frozenset({".ts", ".tsx"})
@@ -70,9 +77,23 @@ REACT_HOOK_RE = re.compile(
 )
 
 
+def load_excluded_paths() -> list[str]:
+    """Load project-specific path exclusions from config file."""
+    if not EXCLUDES_CONFIG_PATH.exists():
+        return []
+    try:
+        with open(EXCLUDES_CONFIG_PATH, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
 def should_skip(file_path: str) -> bool:
     """Check if file should be skipped for quality checks."""
-    return any(p in file_path for p in SKIP_PATTERNS)
+    if any(p in file_path for p in SKIP_PATTERNS):
+        return True
+    excluded = load_excluded_paths()
+    return any(p in file_path for p in excluded)
 
 
 def is_server_file(file_path: str) -> bool:
@@ -93,11 +114,18 @@ def is_server_file(file_path: str) -> bool:
     return False
 
 
-def check_typescript_quality(file_path: str) -> list[str]:
+def check_typescript_quality(
+    file_path: str,
+    edited_range: tuple[int, int] | None = None,
+) -> list[str]:
     """
     Scan a TypeScript file for common CLAUDE.md violations.
 
     Returns a list of warning strings. Empty list = no issues.
+
+    If edited_range is set (start_line, end_line inclusive),
+    line-level warnings outside the range are filtered out.
+    File-level warnings (no line number) always pass through.
     """
     warnings = []
     path_obj = Path(file_path)
@@ -111,6 +139,13 @@ def check_typescript_quality(file_path: str) -> list[str]:
     lines = content.split("\n")
     is_server = is_server_file(file_path)
 
+    # Classify app context for framework-specific checks
+    is_vite_app = (
+        "packages/planner" in file_path
+        or "packages/admin-dashboard" in file_path
+    )
+    is_addin = "connectors/outlook/addin" in file_path
+
     # ── Check 1: console.log / console.error ──────────────────────────
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
@@ -120,12 +155,13 @@ def check_typescript_quality(file_path: str) -> list[str]:
         if "console.log(" in stripped or "console.error(" in stripped:
             warnings.append(
                 f"Line {i}: console.log/error detected — "
-                "use a proper logger (not console in production code)"
+                "use createLogger() from @alfred/shared"
             )
             break  # One warning is enough to trigger fix
 
     # ── Check 2: Missing 'server-only' in server files ────────────────
-    if is_server:
+    # Only applies to Next.js/Vite apps and addins — not Node.js/Express services
+    if is_server and (is_vite_app or is_addin):
         has_server_only = any(
             "server-only" in line
             for line in lines[:10]  # Check first 10 lines
@@ -141,36 +177,12 @@ def check_typescript_quality(file_path: str) -> list[str]:
                 "without it, server code can leak to the client bundle"
             )
 
-    # ── Check 3: `: any` type usage ─────────────────────────────────────
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("//") or stripped.startswith("*"):
-            continue
-        # Match `: any`, `as any`, `<any>` but not words containing "any"
-        if (
-            ": any" in stripped
-            or "as any" in stripped
-            or "<any>" in stripped
-        ):
-            warnings.append(
-                f"Line {i}: `any` type detected — "
-                "use proper types or `unknown` instead"
-            )
-            break  # One warning is enough
+    # ── Check 3: [MOVED to typescript_validator.py] ─────────────────────
+    # `: any` type check moved to avoid duplicate warnings when both hooks run.
 
-    # ── Check 4: React hooks without 'use client' ─────────────────────
-    is_client_file = (
-        "'use client'" in content or '"use client"' in content
-    )
-    if (
-        ext == ".tsx"
-        and not is_server
-        and not is_client_file
-        and REACT_HOOK_RE.search(content)
-    ):
-        warnings.append(
-            "Uses React hooks but missing `'use client'` directive"
-        )
+    # ── Check 4: [DISABLED] React hooks without 'use client' ──────────
+    # Alfred has no Next.js App Router apps — all React is Vite.
+    # 'use client' is a Next.js App Router directive; it's meaningless in Vite.
 
     # ── Check 5: Default exports for non-page/layout components ───────
     is_page = path_obj.name == "page.tsx"
@@ -188,52 +200,26 @@ def check_typescript_quality(file_path: str) -> list[str]:
             "prefer named exports (except page/layout)"
         )
 
-    # ── Check 6: Hardcoded secrets ────────────────────────────────────
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if stripped.startswith("//") or stripped.startswith("*"):
-            continue
-        for pattern, description in SECRET_PATTERNS:
-            if re.search(pattern, line, re.IGNORECASE):
-                warnings.append(
-                    f"Line {i}: Possible hardcoded secret "
-                    f"({description}) — use environment variables"
-                )
-                break
-        else:
-            continue
-        break  # One secret warning is enough
+    # ── Check 6: [MOVED to typescript_validator.py] ───────────────────
+    # Hardcoded secrets check moved to avoid duplicate warnings.
 
-    # ── Check 7: Admin/service-role client without justification ──────
-    if re.search(
-        r"service.?role|admin.?client|SUPABASE_SERVICE_ROLE",
-        content,
-        re.IGNORECASE,
-    ):
-        for i, line in enumerate(lines, 1):
-            stripped = line.strip()
-            # Skip comment lines — they can't be the violation
-            if stripped.startswith("//") or stripped.startswith("*"):
-                continue
-            if re.search(
-                r"service.?role|admin.?client|SUPABASE_SERVICE_ROLE",
-                line,
-                re.IGNORECASE,
-            ):
-                # Check 3 lines above (including current) for justification
-                context_start = max(0, i - 4)
-                # i is 1-indexed, lines is 0-indexed: lines[0:i] = up to current
-                context_lines = "\n".join(lines[context_start:i])
-                if not re.search(
-                    r"//.*(?:admin|bypass|rls|oauth|callback|seed|webhook)",
-                    context_lines,
-                    re.IGNORECASE,
-                ):
-                    warnings.append(
-                        f"Line {i}: Service-role/admin client bypasses "
-                        f"ALL RLS — add comment explaining why"
-                    )
-                break  # One warning is enough
+    # ── Check 7: [MOVED to typescript_validator.py] ───────────────────
+    # Admin/service-role client check moved to avoid duplicate warnings.
+
+    # Filter line-level warnings to edited range (Edit operations only)
+    if edited_range is not None:
+        line_re = re.compile(r"^Line (\d+):")
+        filtered = []
+        for w in warnings:
+            m = line_re.match(w)
+            if m:
+                line_num = int(m.group(1))
+                if edited_range[0] <= line_num <= edited_range[1]:
+                    filtered.append(w)
+            else:
+                # File-level warnings always pass through
+                filtered.append(w)
+        warnings = filtered
 
     return warnings
 
@@ -254,8 +240,28 @@ def main():
             ext = Path(file_path).suffix
 
             if ext in TS_EXTENSIONS and not should_skip(file_path):
+                # For Edit, scope warnings to the edited region
+                edited_range = None
+                if tool_name == "Edit":
+                    new_string = tool_input.get("new_string", "")
+                    try:
+                        content = Path(file_path).read_text(
+                            encoding="utf-8"
+                        )
+                        pos = content.find(new_string)
+                        if pos >= 0:
+                            start_line = (
+                                content[:pos].count("\n") + 1
+                            )
+                            end_line = (
+                                start_line + new_string.count("\n")
+                            )
+                            edited_range = (start_line, end_line)
+                    except (FileNotFoundError, OSError):
+                        pass  # Fall back to full-file scan
+
                 quality_warnings = check_typescript_quality(
-                    file_path
+                    file_path, edited_range=edited_range
                 )
 
         # --- Logging ---
@@ -299,6 +305,12 @@ def main():
 
         with open(log_path, "w") as f:
             json.dump(log_data, f, indent=2)
+
+        # JSONL append-only log (grep-able across sessions)
+        jsonl_data = {"tool": tool_name}
+        if quality_warnings:
+            jsonl_data["warnings"] = quality_warnings
+        log_jsonl("PostToolUse", session_id, jsonl_data)
 
         # --- MCP output trimming ---
         # Large MCP tool outputs flood context and degrade

@@ -1,5 +1,6 @@
 ---
 name: security-reviewer
+memory: project
 description: |
   Security vulnerability detection and remediation specialist. Use PROACTIVELY after writing code that handles user input, authentication, API endpoints, or sensitive data. Key capabilities: RLS policy validation, multi-tenant isolation checks, secrets detection, OWASP Top 10 scanning, admin client misuse flagging. Trigger phrases: 'review security', 'check for vulnerabilities', 'audit RLS policies', 'is this safe'. Do NOT use for general code quality — use code-quality-reviewer instead.
 

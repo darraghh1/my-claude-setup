@@ -1,0 +1,10 @@
+{
+  "// USAGE": "Copy this file to settings.local.json to override settings per-developer.",
+  "// NOTE": "settings.local.json is gitignored — your overrides won't affect others.",
+
+  "// Disable all hooks (useful for debugging or when hooks cause issues)": "",
+  "disableAllHooks": false,
+
+  "// Override specific settings": "",
+  "// companyAnnouncements": "Your custom startup message here"
+}

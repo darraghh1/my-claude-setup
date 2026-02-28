@@ -24,6 +24,8 @@ This skill is a **thin dispatcher**. It does NOT read references, extract patter
 
 **All agents are ephemeral.** Each gets a fresh 200K context and is shut down after its cycle. This prevents context contamination, ensures skill instructions are never compacted, and eliminates bottlenecks.
 
+**Builders run in isolated git worktrees.** Each builder gets `isolation: "worktree"` — a separate working directory with its own branch. This prevents parallel builders from corrupting each other's files. The builder commits to its worktree branch, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge.
+
 ### Processing Model
 
 ```
@@ -210,17 +212,21 @@ Task({
   team_name: "{plan-name}-impl",
   name: "builder-1",
   mode: "bypassPermissions",
+  isolation: "worktree",
   prompt: `Implement the phase at: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
 Skill: {skill-from-frontmatter}
 
-Follow your preloaded builder-workflow skill. It teaches you how to:
+Your first action: invoke the builder-workflow skill via Skill({ skill: "builder-workflow" }). It teaches you how to:
 1. Read the phase and extract requirements
 2. Invoke the Skill above (if not "none") and find reference files
 3. Create internal tasks (TaskCreate) for each step — prefix with [Step]. This is REQUIRED for context compact recovery
 4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
 5. Run tests and typecheck
-6. Report completion to team-lead (do NOT run /code-review — the validator handles that independently)
+6. Commit all changes to your worktree branch before reporting
+7. Report completion to team-lead (do NOT run /code-review — the validator handles that independently)
+
+WORKTREE: You are in an isolated git worktree with your own branch. Your changes are invisible to other builders. You MUST commit before reporting completion — uncommitted changes cannot be merged. Use: git add -A && git commit -m "feat(phase-{NN}): {phase-title}"
 
 IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
 })
@@ -230,7 +236,21 @@ IMPORTANT: Before using the Write tool on any existing file, you MUST Read it fi
 
 Wait for builder completion messages. When a builder reports done:
 
-1. **Spawn a fresh validator for this phase:**
+### 7a: Merge Worktree Branch
+
+The builder's Task result includes a `branch` field (the worktree branch). Merge it into the main working tree before validation:
+
+```bash
+git merge --no-ff {worktree-branch} -m "merge: phase {NN} - {title}"
+```
+
+If the merge has conflicts:
+1. Attempt auto-resolution for trivial conflicts (import ordering, formatting)
+2. If non-trivial conflicts exist, **STOP** and report to the user — manual resolution needed
+
+### 7b: Spawn Validator
+
+After successful merge, spawn a fresh validator. The validator runs on the main tree (no worktree) to verify the integrated result:
 
 ```
 Task({
@@ -248,7 +268,7 @@ Run /code-review against the phase file, then verify with typecheck + tests. Rep
 })
 ```
 
-2. **Wait for ALL validator verdicts in this batch before proceeding.**
+### 7c: Wait for ALL validator verdicts in this batch before proceeding.
 
 ### Handle Verdict
 
@@ -262,9 +282,13 @@ Run /code-review against the phase file, then verify with typecheck + tests. Rep
    - **No** → loop back to find next unblocked phases in this group, spawn next batch
 
 **FAIL:**
-1. Shutdown current builder AND validator (both contexts may be stale)
-2. Spawn a **fresh builder** with the validator's fix instructions
-3. Wait for fix builder → spawn fresh validator → re-validate → repeat until PASS
+1. Revert the worktree merge to restore a clean main branch:
+   ```bash
+   git revert --no-edit HEAD
+   ```
+2. Shutdown current builder AND validator (both contexts may be stale)
+3. Spawn a **fresh builder** (with `isolation: "worktree"`) with the validator's fix instructions
+4. Wait for fix builder → merge branch → spawn fresh validator → re-validate → repeat until PASS
 
 ## Step 8: Group Audit
 
@@ -300,7 +324,7 @@ Phases in this group:
 Previous group deviations:
 {deviation-summary-from-previous-groups OR "None — this is the first group."}
 
-Follow your preloaded auditor-workflow skill. It teaches you how to:
+Your first action: invoke the auditor-workflow skill via Skill({ skill: "auditor-workflow" }). It teaches you how to:
 1. Read all group phases and build inventory
 2. Collect and review code reviews for group phases
 3. Check deferred items against current code
@@ -347,11 +371,11 @@ Suggested fix: {fix from auditor report}`,
 
 **9c: For Medium findings — auto-fix cycle:**
 
-1. Spawn a builder with the specific fix instructions from the auditor report
-2. Wait for builder completion
-3. Spawn validator to verify the fix
+1. Spawn a builder (with `isolation: "worktree"`) with the specific fix instructions from the auditor report
+2. Wait for builder completion → merge worktree branch (same as Step 7a)
+3. Spawn validator to verify the fix on main
 4. If PASS → mark fix task complete
-5. If FAIL → retry (max 3 attempts per finding, then escalate to user)
+5. If FAIL → revert merge, retry (max 3 attempts per finding, then escalate to user)
 
 **9d: For High/Critical findings — user checkpoint:**
 

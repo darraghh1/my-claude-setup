@@ -2,6 +2,7 @@
 name: review-plan
 description: "Review plan.md or a single phase file against templates and codebase compliance. One file per invocation."
 argument-hint: "[plan-folder] [phase NN]"
+disable-model-invocation: true
 context: fork
 agent: general-purpose
 model: sonnet

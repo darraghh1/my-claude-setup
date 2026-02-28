@@ -42,5 +42,13 @@
     "safe_patterns": [],
     "action": "ask",
     "reason": "TRUNCATE removes all rows from the table instantly with no transaction log for recovery. Unlike DELETE, it cannot be rolled back in most contexts. Confirm this is intentional and that the data is expendable."
+  },
+  {
+    "pattern": "git\\s+stash\\b",
+    "safe_patterns": [
+      "git\\s+stash\\s+(list|show)"
+    ],
+    "action": "ask",
+    "reason": "git stash silently hides uncommitted work from the working tree, making it invisible to subsequent steps. An agent stashing or popping changes can corrupt in-progress work or create hard-to-diagnose merge conflicts. Use a commit or a separate branch instead."
   }
 ]

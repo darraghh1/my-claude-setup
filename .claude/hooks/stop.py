@@ -14,7 +14,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from utils.constants import ensure_session_log_dir
+from utils.constants import ensure_session_log_dir, log_jsonl
 from utils.notify import notify
 
 
@@ -58,6 +58,9 @@ def main():
 
         with open(log_path, "w") as f:
             json.dump(log_data, f, indent=2)
+
+        # JSONL append-only log
+        log_jsonl("Stop", session_id, {})
 
         # Convert JSONL transcript to chat.json
         if args.chat and "transcript_path" in input_data:

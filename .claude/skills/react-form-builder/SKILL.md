@@ -1,6 +1,7 @@
 ---
 name: react-form-builder
 description: "Create client-side forms with react-hook-form, shadcn/ui, Zod validation, and server action integration for Next.js applications."
+argument-hint: "[form-name]"
 metadata:
   version: 1.0.0
 ---

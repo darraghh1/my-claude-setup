@@ -60,7 +60,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 | **Skills** | 27 slash commands | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents** | 9 agent definitions | Specialized sub-agents for architecture, review, testing, building, auditing, planning |
 | **MCP Servers** | 5 integrations | Browser automation, documentation lookup, web search, structured reasoning, diagramming |
-| **Rules** | 15 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
+| **Rules** | 16 markdown files | Coding standards for TypeScript, React, Supabase, security, testing, and more |
 
 ---
 
@@ -104,7 +104,7 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 | Role | Lifetime | Responsibility |
 |------|----------|---------------|
 | **Orchestrator** | Entire plan | Processes groups sequentially, gate checks phases, spawns/shuts down agents, routes build/validate verdicts, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user) |
-| **Builder** | One phase (ephemeral) | Full phase implementation — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck. Does NOT review its own code. |
+| **Builder** | One phase (ephemeral) | Full phase implementation in an **isolated git worktree** — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck, commits to worktree branch. Orchestrator merges branch before validation. Does NOT review its own code. |
 | **Validator** | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator. |
 | **Auditor** | One group (ephemeral) | Cross-phase analysis after a group completes — checks regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator. |
 
@@ -119,7 +119,9 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 
 **Why agents are ephemeral:** Each task gets a fresh agent with a clean 200K context window. After the work cycle completes, agents are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
 
-**Context injection:** Teammates don't inherit the parent's full context (CLAUDE.md, rules, skills, MCP tools). The `SubagentStart` hook compensates by injecting all 13 rule files (~9.5K tokens) and a skill registry into builder/validator/auditor/planner agents at spawn time — read fresh from disk, not from the parent's stale cache. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
+**Builder worktree isolation:** Each builder runs in an isolated git worktree (`isolation: "worktree"`) with its own branch. This prevents parallel builders from corrupting each other's files. The builder commits to its worktree branch, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge before respawning a fresh builder.
+
+**Context injection:** Teammates don't inherit the parent's full context — file-scoped rules, domain skills, and project patterns must reach agents another way. Five rules with `alwaysApply: true` (git-workflow, mcp-tools, security, date-formatting, domain-patterns) load natively for all teammates. The workflow skills (`builder-workflow`, `validator-workflow`, `auditor-workflow`) each start with a Step 0 that explicitly reads `coding-style.md` and `patterns.md`. `domain-patterns.md` provides compressed critical patterns from all 9 domain skills as passive context — following the [Vercel finding](docs/research/vercel-skills-findings.md) that passive context achieves 100% compliance vs 53-79% for on-demand skill invocation. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
 
 The `/implement` orchestrator uses a **batch processing model** with strict concurrency limits:
 
@@ -140,7 +142,7 @@ Quality is enforced at four layers during each phase, in order:
 |-------|------|-----------|---------|
 | **Global PostToolUse hook** | Every Write/Edit on TS files | `post_tool_use.py` (7 regex checks) | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse |
 | **Builder verification** | After implementation | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Test failures, type errors, E2E regressions, DB test failures |
-| **Validator `/code-review`** | After builder reports done | 451-line checklist, codebase-grounded, auto-fix (independent agent) | Pattern deviations, security issues, missing auth checks |
+| **Validator `/code-review`** | After builder reports done | Comprehensive checklist (Code Reuse, Efficiency, TypeScript, Security, RLS, React, Testing), codebase-grounded, auto-fix (independent agent) | Pattern deviations, reinvented utilities, TOCTOU anti-patterns, security issues, missing auth checks |
 | **Validator verification** | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db` | Issues introduced by auto-fixes, E2E regressions, DB test failures |
 
 The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification. To enable the TypeScript LSP:
@@ -182,6 +184,8 @@ Not everything needs a plan. For smaller tasks — bug fixes, single-feature add
 | React forms | `/react-form-builder` |
 | Components/pages | `/vercel-react-best-practices` |
 | E2E tests | `/playwright-e2e` |
+
+After verification passes, `/dev` runs `git diff --name-only` to confirm the exact set of files changed before reporting done — useful after context compacts where memory of what was touched may be incomplete.
 
 If a `/dev` task turns out to be too large (10+ files, multiple domains), it recommends switching to `/create-plan` instead.
 
@@ -302,11 +306,10 @@ Optional:
 │   ├── session_end.py              # Logs session end, plays completion sound
 │   ├── session_start.py            # Injects git branch/status into context
 │   ├── stop.py                     # Transcript export + completion sound
-│   ├── subagent_start.py           # Injects project rules into sub-agents
-│   ├── subagent_stop.py            # Logs sub-agent completion
 │   ├── user_prompt_submit.py       # Logs prompts, stores for status display
+│   ├── logs/                       # JSONL append-only logs (gitignored, grep-able across sessions)
 │   ├── utils/
-│   │   ├── constants.py            # Shared paths and log directory helpers
+│   │   ├── constants.py            # Shared paths, log directory helpers, JSONL logging
 │   │   └── notify.py               # Sound notification via HTTP (optional)
 │   └── validators/
 │       ├── typescript_validator.py  # Project-specific TS pattern checks (customisation template, not active by default)
@@ -314,11 +317,12 @@ Optional:
 │       ├── validate_new_file.py         # Checks a new file was created
 │       ├── validate_no_placeholders.py  # Detects placeholder/skeleton content
 │       └── validate_tdd_tasks.py        # Enforces TDD task ordering in plans
-├── rules/                          # 15 rule files
+├── rules/                          # 16 rule files
 │   ├── admin.md                    # Admin operations guidelines
 │   ├── coding-style.md             # TypeScript/React coding standards
 │   ├── database.md                 # Supabase/Postgres patterns and RLS
 │   ├── date-formatting.md          # Date parsing (YYYY-MM-DD as local time, not UTC)
+│   ├── domain-patterns.md          # Compressed domain skill patterns (passive context for agents)
 │   ├── forms.md                    # Form handling with react-hook-form + Zod
 │   ├── git-workflow.md             # Branch strategy and commit conventions
 │   ├── i18n.md                     # Internationalization patterns
@@ -359,9 +363,10 @@ Optional:
 │   ├── vercel-react-native-skills/
 │   └── web-design-guidelines/
 ├── settings.json                   # Hook configuration and environment
-├── settings.local.json             # Local overrides (output style, spinner)
+├── settings.local.json.example     # Template for local overrides (gitignored)
 docs/
-└── research/                       # 9 Anthropic reference documents (see Research section)
+├── workflow.md                     # Detailed pipeline workflow documentation
+└── research/                       # Research documents (see Research section)
 
 .mcp.json.example                   # Example MCP server definitions (copy and add API keys)
 CLAUDE.md                           # Main project instructions
@@ -377,13 +382,11 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 
 | Hook | Script | Trigger | What It Does |
 |------|--------|---------|--------------|
-| **PreToolUse** | `pre_tool_use.py` | Before any tool call | Blocks dangerous Bash commands (configurable). Logs a structured summary of every tool call. |
-| **PostToolUse** | `post_tool_use.py` | After any tool call | Runs 7 quality checks on TypeScript files after Write/Edit (see table below). Injects warnings into Claude's context. |
+| **PreToolUse** | `pre_tool_use.py` | Before any tool call | Blocks dangerous Bash commands (configurable). Logs a structured summary of every tool call. JSONL append-only log for cross-session analysis. |
+| **PostToolUse** | `post_tool_use.py` | After any tool call | Runs 7 quality checks on TypeScript files after Write/Edit (see table below). Injects warnings into Claude's context. Trims oversized MCP outputs. JSONL logging. |
 | **PostToolUseFailure** | `post_tool_use_failure.py` | After a tool call fails | Pattern-matches error messages and injects actionable guidance (e.g., "Read file before Edit", "Don't retry denied commands"). |
 | **Notification** | `notification.py` | When Claude needs input | Plays a sound for permission prompts and elicitation dialogs. Ignores idle/auth events. |
-| **Stop** | `stop.py` | When Claude stops | Exports JSONL transcript to `chat.json`. Plays completion sound. |
-| **SubagentStart** | `subagent_start.py` | When a sub-agent launches | Tiered context injection: builder/validator/auditor agents get full rule files (read fresh from disk) + skill registry (~9.5K tokens); all other agents get a condensed 11-bullet summary (~180 tokens). Only fresh injection point — everything else is stale parent cache. |
-| **SubagentStop** | `subagent_stop.py` | When a sub-agent finishes | Logs sub-agent completion with agent type and transcript path. |
+| **Stop** | `stop.py` | When Claude stops | Exports JSONL transcript to `chat.json`. Plays completion sound. JSONL logging. |
 | **PreCompact** | `pre_compact.py` | Before context compaction | Logs compaction events. Optionally backs up the transcript before compression. |
 | **UserPromptSubmit** | `user_prompt_submit.py` | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display. |
 | **SessionStart** | `session_start.py` | When a session begins | Injects current git branch and uncommitted file count into Claude's context. Logs session start. |
@@ -481,7 +484,7 @@ Skills are invoked via slash commands (e.g., `/create-plan`) or the `Skill` tool
 
 | Skill | Slash Command | Purpose |
 |-------|--------------|---------|
-| **create-plan** | `/create-plan` | Orchestrates plan creation — spawns an ephemeral planner agent with user checkpoints, then validators for review |
+| **create-plan** | `/create-plan` | Orchestrates plan creation — spawns an Explore agent for codebase grounding, then an ephemeral planner agent with user checkpoints, then validators for review |
 | **audit-plan** | `/audit-plan` | Structural flow audit — dependencies, ordering, data flow. Runs BEFORE reviews; bails on fundamentally broken plans |
 | **review-plan** | `/review-plan` | Per-phase template + codebase compliance review. Runs AFTER audit passes |
 | **implement** | `/implement` | Executes implementation phases from a plan (handles TDD, coding, review loop) |
@@ -545,11 +548,11 @@ Agents are specialized sub-agents that can be delegated tasks via the `Task` too
 | Agent | Model | Tools | Purpose |
 |-------|-------|-------|---------|
 | **architect** | Sonnet | Read, Grep, Glob | Software architecture design, trade-off analysis, database schema planning, route/component design. Read-only -- does not implement. |
-| **code-quality-reviewer** | Sonnet | Read, Grep, Glob, Bash | Code quality review against TypeScript/React/Next.js patterns. Outputs severity-rated findings with fix suggestions. |
-| **security-reviewer** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Security vulnerability detection: RLS validation, secrets scanning, admin client misuse, OWASP Top 10 checks. |
+| **code-quality-reviewer** | Sonnet | Read, Grep, Glob, Bash | Code quality review against TypeScript/React/Next.js patterns. Outputs severity-rated findings with fix suggestions. Has `memory: project` for cross-session learning. |
+| **security-reviewer** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Security vulnerability detection: RLS validation, secrets scanning, admin client misuse, OWASP Top 10 checks. Has `memory: project` for cross-session learning. |
 | **tdd-guide** | Sonnet | Read, Write, Edit, Bash, Grep | Test-Driven Development specialist using Vitest with happy-dom. Guides RED-GREEN-REFACTOR workflow. |
 | **doc-updater** | Sonnet | Read, Write, Edit, Bash, Grep, Glob | Documentation maintenance. Updates CLAUDE.md, architecture maps, and feature documentation. |
-| **auditor** | Opus | Read, Grep, Glob, Bash, Task tools, SendMessage | Read-only group auditor. Reviews connected phases for cross-phase regressions, deferred items, plan drift, and system integrity. Reports severity-rated findings to orchestrator. |
+| **auditor** | Opus | Read, Grep, Glob, Bash, Task tools, SendMessage | Read-only group auditor. Reviews connected phases for cross-phase regressions, deferred items, plan drift, and system integrity. Reports severity-rated findings to orchestrator. Has `memory: project` for cross-session learning of deviation patterns. |
 | **builder** | Opus | Full tool access | Focused implementation agent. Executes one task at a time, supports skill invocation, follows project patterns. |
 | **planner** | Opus | Full tool access | Ephemeral planning agent. Creates plan.md + phase files grounded in codebase patterns. Reports at checkpoints for user course-correction. |
 | **validator** | Opus | Full tool access (except NotebookEdit) | Independent code review and validation via `validator-workflow` skill. Runs `/code-review` (reference-grounded, auto-fix), then typecheck + tests + conditional E2E/DB. Reports PASS/FAIL to orchestrator. |
@@ -567,9 +570,9 @@ Rules use a **two-layer complementary system**. User-level rules define universa
 | **User-level** | `~/.claude/rules/` (symlinked from this repo) | Generic Next.js/Supabase/TypeScript patterns. Complete and correct on their own. |
 | **Project-level** | `your-project/.claude/rules/project-implementation.md` | Framework-specific overrides — maps universal patterns to your stack's utilities. |
 
-Rules are **additive** in Claude Code — both levels load simultaneously. 11 of the 15 user-level rules include a cross-reference: _"If your project has a `project-implementation.md` rule, check it for framework-specific overrides."_ This guides Claude to check for project-specific implementations of each universal pattern.
+Rules are **additive** in Claude Code — both levels load simultaneously. 11 of the 16 user-level rules include a cross-reference: _"If your project has a `project-implementation.md` rule, check it for framework-specific overrides."_ This guides Claude to check for project-specific implementations of each universal pattern.
 
-### User-Level Rules (15 files)
+### User-Level Rules (16 files)
 
 | Rule File | What It Covers |
 |-----------|---------------|
@@ -577,6 +580,7 @@ Rules are **additive** in Claude Code — both levels load simultaneously. 11 of
 | `coding-style.md` | Immutability, error handling with structured logging, Server Action conventions, import ordering, React best practices |
 | `database.md` | Supabase/Postgres patterns: migrations, type inference, SQL style, RLS helpers, views with `security_invoker`, common patterns |
 | `date-formatting.md` | Date parsing safety: YYYY-MM-DD strings must be parsed as local time (not UTC) to avoid off-by-one display bugs |
+| `domain-patterns.md` | Compressed critical patterns from all domain knowledge skills — injected as passive context into agents. Covers React/Next.js, PostgreSQL/Supabase, Server Actions, Services, Forms, Playwright E2E. Each section has `ref:` pointers to full skill docs. |
 | `forms.md` | Form handling with `react-hook-form` + Zod, schema sharing between client and server, validation patterns |
 | `git-workflow.md` | Branch strategy (`development`/`main`), commit message format, pre-push verification, PR workflow |
 | `i18n.md` | Internationalization patterns, translation key conventions, locale handling |
@@ -757,7 +761,7 @@ This setup is designed to maximise prompt cache hit rates. The Anthropic API cac
 | Design Decision | Why It Helps |
 |----------------|-------------|
 | **Hooks inject via `additionalContext`** | Dynamic data (git status, quality warnings, subagent rules) goes into `<system-reminder>` messages, not the prefix. The prefix stays stable. |
-| **Static CLAUDE.md and rules** | No timestamps, git refs, or session-specific data in any prefix file. All 15 rule files are pure instructions. |
+| **Static CLAUDE.md and rules** | No timestamps, git refs, or session-specific data in any prefix file. All 16 rule files are pure instructions. |
 | **Fixed MCP tool set** | 5 MCP servers configured at session start, no conditional loading. Tool schemas are stable between turns. |
 | **Model delegation via subagents** | Agents use different models (Sonnet for reviewers, Opus for builders/auditors) but each runs in a separate conversation. The parent's cache is never broken by model switches. |
 | **Minimal per-turn injection** | SessionStart injects ~50 chars (git branch). UserPromptSubmit injects nothing. Per-turn overhead is < 500 chars. |
@@ -771,8 +775,6 @@ Measured via `/cache-audit` (run it periodically to check for regressions):
 |-----------|------|-------|
 | Static prefix (CLAUDE.md + rules + MEMORY.md) | ~12K tokens | Cached between turns (~90% savings) |
 | Per-turn injection | ~125 tokens | SessionStart + PostToolUse warnings |
-| Per-builder spawn (SubagentStart full tier) | ~9K tokens | 13 rule files + skill registry, read fresh from disk |
-| Per-lightweight spawn (SubagentStart compact) | ~180 tokens | Condensed 11-bullet summary |
 
 The static prefix consumes ~6% of the 200K context window, leaving 94% for actual conversation and code.
 
@@ -1084,9 +1086,11 @@ The `docs/` directory contains research and reference material:
 
 | Document | What It Covers |
 |----------|---------------|
-| [teams-research.md](docs/teams-research.md) | What context teammates actually receive — CLAUDE.md, rules, skills, MCP tools — and how the SubagentStart hook compensates for gaps |
+| [teams-research.md](docs/teams-research.md) | What context teammates actually receive — CLAUDE.md, rules, skills, MCP tools — and how teammates self-load context via Step 0 in workflow skills |
 
-The `docs/research/` directory contains reference material from Anthropic's official documentation that informed the design of this setup. Useful if you want to understand the "why" behind the hooks, skills, and agent patterns.
+The `docs/research/` directory contains reference material that informed the design of this setup. Useful if you want to understand the "why" behind the hooks, skills, and agent patterns.
+
+**Anthropic references:**
 
 | Document | What It Covers |
 |----------|---------------|
@@ -1099,6 +1103,14 @@ The `docs/research/` directory contains reference material from Anthropic's offi
 | [anthropic-teams.md](docs/research/anthropic-teams.md) | Orchestrating teams of Claude Code sessions with shared tasks and messaging |
 | [anthropic-memory-and-prompting.md](docs/research/anthropic-memory-and-prompting.md) | CLAUDE.md memory hierarchy, directive compliance, and documentation architecture |
 | [anthropic-takeaways.md](docs/research/anthropic-takeaways.md) | Quick-reference action table summarizing insights across all topics |
+
+**Vercel and community research:**
+
+| Document | What It Covers |
+|----------|---------------|
+| [vercel-skills-findings.md](docs/research/vercel-skills-findings.md) | Vercel's evaluation showing passive context (AGENTS.md) achieves 100% compliance vs 53-79% for on-demand skill invocation -- the rationale behind `domain-patterns.md` |
+| [vercel-skills-integrate.md](docs/research/vercel-skills-integrate.md) | How Claude Code skills actually load -- frontmatter-only at startup, full body on invocation. Informs skill categorization and passive context strategy. |
+| [skill-audit.md](docs/research/skill-audit.md) | Categorization of all 27 skills into Workflow (invoked as first action), Domain Knowledge (passive via domain-patterns), and MCP (dual-covered by rules) -- extraction targets for passive context |
 
 ---
 

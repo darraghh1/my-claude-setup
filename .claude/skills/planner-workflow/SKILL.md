@@ -1,6 +1,6 @@
 ---
 name: planner-workflow
-description: "Phase-level planning workflow for planner agents. Handles reading templates, exploring codebase references, creating plan.md and phase files, self-validation, and checkpoint reporting to the orchestrator. Preloaded into planner agents via skills: field — not user-invocable."
+description: "Phase-level planning workflow for planner agents. Handles reading templates, exploring codebase references, creating plan.md and phase files, self-validation, and checkpoint reporting to the orchestrator. Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
   version: 1.0.0

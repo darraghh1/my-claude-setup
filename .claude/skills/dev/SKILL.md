@@ -2,10 +2,6 @@
 name: dev
 description: "Ad-hoc development workflow for implementing features, fixing bugs, and making code changes outside a formal plan. Use when asked to implement, add, fix, build, or create something in the codebase. Routes to domain skills (postgres-expert, server-action-builder, react-form-builder, service-builder, playwright-e2e), enforces task tracking for context-compact recovery, and follows a reference-grounded build-test-verify loop. Do NOT use for large multi-phase features — use /create-plan + /implement instead."
 argument-hint: "[task description]"
-agent: general-purpose
-model: sonnet
-compatibility: "Claude Code only. Requires Task, Skill, TaskCreate, TaskUpdate, TaskList, and TaskGet tools."
-allowed-tools: "Read Write Edit Grep Glob Bash Skill Task TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.1.0
 ---
@@ -134,11 +130,17 @@ Both must pass. If either fails, fix the issues before proceeding.
 
 If the project doesn't have these commands, check `package.json` scripts for alternatives.
 
-### Step 6: Summary
+### Step 6: Confirm Scope with Diff
+
+Before summarizing, run `git diff --name-only` (or `git diff --name-only HEAD` if changes are staged) to confirm exactly which files were touched. This gives an accurate, complete list rather than relying on memory — especially after context compacts.
+
+If the diff shows files you didn't intend to modify, investigate before reporting done.
+
+### Step 7: Summary
 
 Report what was done:
 
-- **Files created/modified** (list with brief description of each change)
+- **Files created/modified** (list from `git diff --name-only` with brief description of each change)
 - **Domain skills used** (which skills were invoked)
 - **Verification result** (tests passing, typecheck clean)
 - **Anything left for the user** (manual steps, env vars to set, etc.)

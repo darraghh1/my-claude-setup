@@ -23,7 +23,7 @@ description: |
   assistant: "I'll invoke server-action-builder, read the task details and reference files, then generate the schema, service, and action files."
   <commentary>Triggers because implementation work is being assigned with a specific skill to load, which is the builder's core workflow.</commentary>
   </example>
-tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill", "Task", "SendMessage", "TaskUpdate", "TaskGet", "TaskList", "TaskCreate"]
+tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Skill", "SendMessage", "TaskUpdate", "TaskGet", "TaskList", "TaskCreate"]
 model: opus
 color: cyan
 skills:
@@ -70,7 +70,13 @@ If the Skill field is `none` or absent, skip invocation and proceed directly.
 
 ## Workflow
 
-Follow the **builder-workflow** skill (preloaded). It defines your complete step-by-step process: read phase → pre-flight tests → invoke skill + find reference → create tasks → implement with TDD → verify → report.
+**Your first action:** Invoke the builder-workflow skill — it is NOT automatically preloaded into your context:
+
+```
+Skill({ skill: "builder-workflow" })
+```
+
+Then follow it end-to-end: load rules → read phase → pre-flight tests → invoke skill + find reference → create tasks → implement with TDD → verify → commit → report.
 
 Key points (details in builder-workflow):
 - **Create tasks via `TaskCreate`** for each step, prefixed with `[Step]`. This is required — tasks survive context compacts.

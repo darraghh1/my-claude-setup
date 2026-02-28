@@ -6,6 +6,11 @@ context: fork
 agent: general-purpose
 model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(git diff*) Bash(git log*) Bash(git show*) Task TaskCreate TaskUpdate TaskList TaskGet"
+hooks:
+  PostToolUse:
+    - matcher: "Write"
+      command: "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_file_contains.py"
+      timeout: 10000
 metadata:
   version: 1.2.0
 ---
@@ -231,6 +236,8 @@ Fix Critical and High issues directly in the source files:
    - The fix would change the feature's business logic or user-facing behavior
    - The fix contradicts the phase's Decision Log or architectural approach
    - You genuinely cannot determine the correct fix even after reading references
+
+4. **False positives — skip cleanly, don't argue:** If a finding doesn't clearly apply to this codebase's patterns, or the reference file confirms the code is actually correct, mark it "Not applicable — matches reference at [file:line]" and move on. Do not include borderline findings in the issues tables.
 
 4. After fixing, re-read the file to verify the fix is correct and doesn't introduce new issues.
 

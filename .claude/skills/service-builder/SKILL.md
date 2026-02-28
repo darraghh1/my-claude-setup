@@ -1,6 +1,7 @@
 ---
 name: service-builder
 description: "Build pure, interface-agnostic services with injected dependencies for Next.js/Supabase applications."
+argument-hint: "[service-name]"
 metadata:
   version: 1.0.0
 ---

@@ -1,6 +1,6 @@
 ---
 name: builder-workflow
-description: "Phase-level implementation workflow for builder agents. Handles reading phase files, finding references, invoking domain skills, implementing all steps, and running verification (tests + typecheck). Preloaded into builder agents via skills: field — not user-invocable."
+description: "Phase-level implementation workflow for builder agents. Handles loading project rules, reading phase files, finding references, invoking domain skills, implementing all steps, and running verification (tests + typecheck). Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
   version: 1.0.0
@@ -16,11 +16,27 @@ The user experienced builders that guessed at patterns, skipped tests, and produ
 
 | Step | Prevents |
 |------|----------|
+| Load project rules | Building code that violates coding conventions (teammates don't inherit parent rules) |
 | Read phase completely | Missing requirements, user has to re-explain |
 | Pre-flight test check | Cascading failures from broken previous phases |
 | Find reference file | Guessing at patterns, code doesn't match codebase |
 | Invoke domain skill | Missing project-specific conventions |
 | TDD first (Step 0) | Untested code, bugs discovered in production |
+
+## Step 0: Load Project Rules
+
+Teammates don't inherit all parent rules — only `alwaysApply` rules load natively. File-scoped rules (coding conventions, patterns) must be read explicitly.
+
+Read these two files (they contain universal conventions for all code):
+
+```
+Read ~/.claude/rules/coding-style.md
+Read ~/.claude/rules/patterns.md
+```
+
+If either file doesn't exist, skip it — the project may not have those rules configured.
+
+These rules cover import ordering, error handling, server-only guards, data fetching patterns, service patterns, and route structure. Follow them throughout your implementation.
 
 ## Step 1: Read the Phase
 
@@ -153,7 +169,21 @@ All extra tests must pass before reporting completion.
 
 **Scope boundary:** Your job ends here. Do NOT run `/code-review` — an independent validator teammate will review your work after you report. This separation ensures blind spots are caught by a fresh set of eyes.
 
-## Step 7: Report Completion
+## Step 7: Commit Changes (Worktree)
+
+You are running in an isolated git worktree. Your changes live on a separate branch that the orchestrator will merge into the main tree. **Uncommitted changes cannot be merged** — they are lost when the worktree is cleaned up.
+
+Commit all changes before reporting:
+
+```bash
+git add -A && git commit -m "feat(phase-{NN}): {phase-title}"
+```
+
+`git add -A` is safe here because your worktree started clean from the main branch — it only picks up your own phase work.
+
+If you have nothing to commit (e.g., the phase only modified test expectations that already pass), note this in your completion report.
+
+## Step 8: Report Completion
 
 Send completion message to the orchestrator:
 

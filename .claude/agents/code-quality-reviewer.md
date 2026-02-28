@@ -1,5 +1,6 @@
 ---
 name: code-quality-reviewer
+memory: project
 description: |
   Code quality and Next.js/TypeScript pattern compliance reviewer. Use PROACTIVELY after writing or modifying TypeScript/React/Next.js code. Key capabilities: TypeScript strictness (no any), Server Action validation, RLS validation, import ordering, server-only guards, component library usage checks, useEffect/useState smell detection. Outputs severity-rated findings with file:line references and fix suggestions. Do NOT use for security-focused audits — use security-reviewer instead.
 

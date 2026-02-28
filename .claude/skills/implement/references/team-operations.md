@@ -11,7 +11,7 @@ Supplementary material for the `/implement` skill. This file covers teammate lif
 Each builder follows this flow:
 
 1. **Spawned by orchestrator** with a minimal prompt: phase file path + plan folder
-2. **builder-workflow skill activates** — preloaded via the `skills:` field in builder agent config
+2. **builder-workflow skill invoked** — builder's first action is `Skill({ skill: "builder-workflow" })` as instructed by its agent config
 3. **Read phase** — extract requirements, steps, acceptance criteria
 4. **Pre-flight test check** — verify previous phases haven't left broken tests
 5. **Find reference + invoke domain skill** — ground truth for patterns
@@ -21,7 +21,7 @@ Each builder follows this flow:
 9. **Report completion** to orchestrator via SendMessage (do NOT run `/code-review` — the validator handles that independently)
 10. **Shut down** when orchestrator sends shutdown_request
 
-**Builders do NOT receive step-level tasks from the orchestrator.** The builder handles the entire phase end-to-end using its preloaded `builder-workflow` skill. The orchestrator's only job is to spawn the builder with the right phase file.
+**Builders do NOT receive step-level tasks from the orchestrator.** The builder handles the entire phase end-to-end using the `builder-workflow` skill (invoked as its first action). The orchestrator's only job is to spawn the builder with the right phase file.
 
 ## Validator Teammate Lifecycle
 
@@ -125,9 +125,9 @@ The Write tool **silently fails** if you haven't Read the file first. This has c
 
 ### Builder Produces Non-Compliant Code
 
-**Cause:** Builder didn't follow its preloaded `builder-workflow` skill — skipped the reference file read or domain skill invocation.
+**Cause:** Builder didn't follow the `builder-workflow` skill — skipped the reference file read or domain skill invocation.
 
-**Fix:** The builder-workflow skill handles this automatically. If it's still happening, check that the builder agent config (`.claude/agents/team/builder.md`) has `skills: [builder-workflow]` in frontmatter.
+**Fix:** The builder-workflow skill handles this when invoked. If it's still happening, check that the builder agent config (`.claude/agents/team/builder.md`) instructs the builder to invoke the skill as its first action.
 
 ### Context Compact Loses Orchestrator Progress
 
