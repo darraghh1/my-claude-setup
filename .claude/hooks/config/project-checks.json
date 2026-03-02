@@ -1,0 +1,40 @@
+{
+  "loggerMessage": "use createLogger() from @alfred/shared",
+  "frontendAppPaths": [
+    "packages/planner",
+    "packages/admin-dashboard",
+    "connectors/outlook/addin"
+  ],
+  "useClientEnabled": false,
+  "blockedImports": [
+    { "pattern": "@mui/", "message": "project uses @fluentui/react-components instead" },
+    { "pattern": "@chakra-ui/", "message": "project uses @fluentui/react-components instead" },
+    { "pattern": "@radix-ui/", "message": "project uses @fluentui/react-components instead" },
+    { "pattern": "antd", "message": "project uses @fluentui/react-components instead" }
+  ],
+  "wrapperImports": [
+    {
+      "direct": "@supabase/supabase-js",
+      "wrapper": "@alfred/supabase",
+      "skipPaths": ["packages/supabase/"]
+    }
+  ],
+  "envVarChecks": [
+    {
+      "paths": ["packages/planner", "packages/admin-dashboard"],
+      "pattern": "NEXT_PUBLIC_",
+      "message": "Vite apps use VITE_ prefix for browser env vars"
+    },
+    {
+      "paths": ["connectors/outlook/addin"],
+      "pattern": "import\\.meta\\.env",
+      "message": "Outlook add-in uses __VAR__ globals via DefinePlugin"
+    }
+  ],
+  "clientServerMismatch": {
+    "serverFunctions": ["getSupabaseServerClient"],
+    "clientHooks": ["useSupabase"],
+    "serverInClientMessage": "use useSupabase() hook from @alfred/supabase",
+    "clientInServerMessage": "use getSupabaseServerClient() instead"
+  }
+}

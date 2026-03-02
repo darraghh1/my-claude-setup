@@ -33,6 +33,9 @@ from utils.constants import ensure_session_log_dir, log_jsonl
 EXCLUDES_CONFIG_PATH = (
     Path(__file__).parent / "config" / "quality-check-excludes.json"
 )
+PROJECT_CHECKS_CONFIG = (
+    Path(__file__).parent / "config" / "project-checks.json"
+)
 
 # File extensions to run quality checks on
 TS_EXTENSIONS = frozenset({".ts", ".tsx"})
@@ -88,6 +91,21 @@ def load_excluded_paths() -> list[str]:
         return []
 
 
+def load_project_config() -> dict:
+    """Load project-specific check configuration.
+
+    Returns empty dict when config file is absent — callers use
+    .get() with defaults so all checks fall back to generic behavior.
+    """
+    if not PROJECT_CHECKS_CONFIG.exists():
+        return {}
+    try:
+        with open(PROJECT_CHECKS_CONFIG, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
 def should_skip(file_path: str) -> bool:
     """Check if file should be skipped for quality checks."""
     if any(p in file_path for p in SKIP_PATTERNS):
@@ -138,15 +156,22 @@ def check_typescript_quality(
 
     lines = content.split("\n")
     is_server = is_server_file(file_path)
+    config = load_project_config()
 
-    # Classify app context for framework-specific checks
-    is_vite_app = (
-        "packages/planner" in file_path
-        or "packages/admin-dashboard" in file_path
+    # Determine if file is in a frontend app path (for framework-specific checks).
+    # null/absent frontendAppPaths = all paths are frontend (generic Next.js).
+    # Set frontendAppPaths = only fire for files within those paths (monorepo).
+    frontend_paths = config.get("frontendAppPaths")
+    in_frontend_app = (
+        frontend_paths is None
+        or any(p in file_path for p in frontend_paths)
     )
-    is_addin = "connectors/outlook/addin" in file_path
 
     # ── Check 1: console.log / console.error ──────────────────────────
+    logger_msg = config.get(
+        "loggerMessage",
+        "use a proper logger (not console in production code)",
+    )
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         # Skip comments
@@ -154,14 +179,13 @@ def check_typescript_quality(
             continue
         if "console.log(" in stripped or "console.error(" in stripped:
             warnings.append(
-                f"Line {i}: console.log/error detected — "
-                "use createLogger() from @alfred/shared"
+                f"Line {i}: console.log/error detected — {logger_msg}"
             )
             break  # One warning is enough to trigger fix
 
     # ── Check 2: Missing 'server-only' in server files ────────────────
-    # Only applies to Next.js/Vite apps and addins — not Node.js/Express services
-    if is_server and (is_vite_app or is_addin):
+    # Only applies to frontend app paths where a bundler could leak server code.
+    if is_server and in_frontend_app:
         has_server_only = any(
             "server-only" in line
             for line in lines[:10]  # Check first 10 lines
@@ -180,9 +204,22 @@ def check_typescript_quality(
     # ── Check 3: [MOVED to typescript_validator.py] ─────────────────────
     # `: any` type check moved to avoid duplicate warnings when both hooks run.
 
-    # ── Check 4: [DISABLED] React hooks without 'use client' ──────────
-    # Alfred has no Next.js App Router apps — all React is Vite.
-    # 'use client' is a Next.js App Router directive; it's meaningless in Vite.
+    # ── Check 4: React hooks without 'use client' ──────────────────────
+    # Controlled by useClientEnabled config (default: true for Next.js App Router).
+    # Set to false for projects without App Router (e.g., Vite-only).
+    if config.get("useClientEnabled", True):
+        is_client_file = (
+            "'use client'" in content or '"use client"' in content
+        )
+        if (
+            ext == ".tsx"
+            and not is_server
+            and not is_client_file
+            and REACT_HOOK_RE.search(content)
+        ):
+            warnings.append(
+                "Uses React hooks but missing `'use client'` directive"
+            )
 
     # ── Check 5: Default exports for non-page/layout components ───────
     is_page = path_obj.name == "page.tsx"
