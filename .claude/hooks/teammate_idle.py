@@ -5,41 +5,77 @@
 # ///
 
 """
-TeammateIdle hook — quality gate for premature idling.
+TeammateIdle hook — deduped idle notification.
 
-Prevents teammates from going idle when they have assigned tasks
-that are still in_progress. The user depends on this gate to
-ensure teammates complete their assigned work before idling.
+Teammates going idle is NORMAL between turns. This hook warns once
+per agent per 5-minute window, then allows all subsequent idles.
+Never blocks (exit 0) — blocking idle transitions causes infinite
+loops where the teammate can never stop.
+
+Previous version unconditionally blocked (exit 2) every idle event,
+causing 15-20 hours of wasted compute across sessions.
 """
 
 import json
 import sys
+import time
+from pathlib import Path
+
+SEEN_FILE = Path("/tmp/claude-hook-idle-seen.json")
+TTL_SECONDS = 300  # 5 minutes
+
+
+def load_seen() -> dict:
+    """Load seen-set, pruning expired entries."""
+    try:
+        data = json.loads(SEEN_FILE.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        data = {"agents": {}}
+
+    now = time.time()
+
+    # Prune expired entries
+    agents = {
+        k: v for k, v in data.get("agents", {}).items()
+        if now - v < TTL_SECONDS
+    }
+
+    return {"agents": agents}
+
+
+def save_seen(data: dict) -> None:
+    """Save seen-set atomically."""
+    try:
+        SEEN_FILE.write_text(json.dumps(data))
+    except OSError:
+        pass
 
 
 def main():
     try:
         input_data = json.load(sys.stdin)
-
-        # Check if teammate has in-progress tasks
-        # The hook receives teammate context — if the teammate
-        # is idling with incomplete work, block it.
-        agent_name = input_data.get("agent_name", "unknown")
-
-        # Log the idle event for debugging
-        sys.stderr.write(
-            f"Teammate '{agent_name}' is going idle. "
-            "The user configured this gate because premature "
-            "idling causes incomplete work and missed tasks. "
-            "If you have assigned tasks still in_progress, "
-            "complete them before going idle.\n"
-        )
-
-        # Exit 2 to block with the stderr message — enforces
-        # that teammates complete assigned work before idling.
-        sys.exit(2)
-
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
+
+    agent_name = input_data.get("agent_name", "unknown")
+    now = time.time()
+    seen = load_seen()
+
+    # Already notified about this agent recently — allow silently
+    if agent_name in seen["agents"]:
+        sys.exit(0)
+
+    # First idle for this agent in the window — log info, allow
+    seen["agents"][agent_name] = now
+    save_seen(seen)
+
+    sys.stderr.write(
+        f"[hook] Teammate '{agent_name}' going idle. "
+        "If they have in_progress tasks, send them a message "
+        "to continue work.\n"
+    )
+    # Exit 0 — NEVER block idle transitions. Blocking causes loops.
+    sys.exit(0)
 
 
 if __name__ == "__main__":
