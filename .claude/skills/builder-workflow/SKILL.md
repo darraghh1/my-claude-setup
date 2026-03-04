@@ -185,18 +185,22 @@ If you have nothing to commit (e.g., the phase only modified test expectations t
 
 ## Step 8: Report Completion
 
-Send completion message to the orchestrator:
+Provide your completion report as your **final text output**. The orchestrator receives this as the Agent tool's return value.
 
 ```
-SendMessage({
-  type: "message",
-  recipient: "team-lead",
-  content: "Phase [NN] implementation complete — ready for review.\n\nFiles created/modified:\n- [list]\n\nTests: passing\nTypecheck: passing\n\nAcceptance criteria met:\n- [list key criteria]",
-  summary: "Phase NN implemented — ready for review"
-})
+## Phase [NN] Complete
+
+**Files created/modified:**
+- [list files with brief description of changes]
+
+**Tests:** passing
+**Typecheck:** passing
+
+**Acceptance criteria met:**
+- [list key criteria from the phase]
 ```
 
-Then go idle. The orchestrator will either assign the next phase or send a shutdown request.
+This is your final action — the agent process ends after this output.
 
 ## Resuming After Context Compact
 

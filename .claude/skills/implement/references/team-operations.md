@@ -4,24 +4,26 @@ Supplementary material for the `/implement` skill. This file covers teammate lif
 
 ---
 
-## Builder Teammate Lifecycle
+## Builder Agent Lifecycle
 
-**Builders are ephemeral.** Each phase gets a fresh builder with a clean 200K context. After a phase completes, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases and ensures the `builder-workflow` skill instructions are never compacted away.
+**Builders are ephemeral standalone agents.** Each phase gets a fresh builder with a clean 200K context, spawned WITHOUT `team_name`. This gives each builder its own isolated task list, preventing ID collisions with the orchestrator's phase-level tasks. After a phase completes, the builder's result is returned via the Agent tool — no SendMessage needed.
 
 Each builder follows this flow:
 
-1. **Spawned by orchestrator** with a minimal prompt: phase file path + plan folder
+1. **Spawned by orchestrator** as a standalone agent (`run_in_background: true`, `isolation: "worktree"`, no `team_name`)
 2. **builder-workflow skill invoked** — builder's first action is `Skill({ skill: "builder-workflow" })` as instructed by its agent config
 3. **Read phase** — extract requirements, steps, acceptance criteria
 4. **Pre-flight test check** — verify previous phases haven't left broken tests
 5. **Find reference + invoke domain skill** — ground truth for patterns
-6. **Create internal task list** — `TaskCreate` for each step, prefixed with `[Step]`. Required for context compact recovery
+6. **Create internal task list** — `TaskCreate` for each step, prefixed with `[Step]`. Required for context compact recovery. **Task list is isolated** — won't collide with orchestrator tasks.
 7. **Implement with TDD** — Step 0 first, then remaining steps sequentially. Mark each `[Step]` task `in_progress`/`completed`
 8. **Final verification** — `pnpm test` + `pnpm run typecheck`
-9. **Report completion** to orchestrator via SendMessage (do NOT run `/code-review` — the validator handles that independently)
-10. **Shut down** when orchestrator sends shutdown_request
+9. **Commit changes** to worktree branch
+10. **Output completion report** as final text (returned to orchestrator via Agent tool result)
 
 **Builders do NOT receive step-level tasks from the orchestrator.** The builder handles the entire phase end-to-end using the `builder-workflow` skill (invoked as its first action). The orchestrator's only job is to spawn the builder with the right phase file.
+
+**Why standalone (not teammate)?** When builders were team members, their `TaskCreate` calls shared the orchestrator's task ID space, causing ID collisions that corrupted the orchestrator's phase tracking. Standalone agents get their own task namespace.
 
 ## Validator Teammate Lifecycle
 
@@ -72,6 +74,7 @@ The user experienced each of these failures. Understanding the harm helps you av
 | Builder running `/code-review` on its own code | Self-review blind spots — the author cannot objectively review their own work |
 | Forgetting to update phase status | Plan becomes stale, next session confused about progress |
 | Skipping TaskCreate for phase tracking | Orchestrator loses progress after context compact; no user-visible spinners |
+| Spawning builders with `team_name` | Builder's TaskCreate pollutes orchestrator's task list — ID collisions corrupt phase tracking |
 | More than 2 builders per batch | Context pressure on orchestrator from concurrent messages |
 | More than 4 total active agents (builders + validators) | Session crash, orchestrator overwhelmed |
 | Spawning new builders mid-batch ("filling open slots") | Ratchet effect — agent count only goes up, never stabilises |
@@ -107,6 +110,8 @@ If a builder's context is compacted mid-phase (rare, since builders are ephemera
 2. `TaskGet` on that task → read the self-contained description
 3. Continue from that task — don't restart the phase
 4. The task list is the builder's source of truth, not memory
+
+**Note:** Since builders are standalone agents (no `team_name`), their task list is isolated. `TaskList` returns only the builder's own `[Step]` tasks — no orchestrator task pollution.
 
 ## File Writing Rules (Critical for Teammates)
 
