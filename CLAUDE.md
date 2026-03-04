@@ -1,20 +1,4 @@
-<!--
-CLAUDE.md Template for Next.js / Supabase / TypeScript Projects
-
-This file provides coding standards and architecture patterns for Claude Code.
-
-SETUP INSTRUCTIONS:
-1. Search for all <!-- CUSTOMIZE --> markers
-2. Fill in your project-specific details
-3. Remove examples that don't apply to your project
-4. Adjust rules to match your team's conventions
-
-This template is generalized from a production SaaS setup. Adapt as needed.
--->
-
-<!-- CUSTOMIZE: Replace with a brief description of your project
-Example: "Acme SaaS platform — Next.js App Router, Supabase, TypeScript."
--->
+Reusable Claude Code configuration layer — hooks, skills, agents, rules, MCP servers for Next.js/Supabase/TypeScript projects. This is tooling infrastructure, not an application.
 
 ## Critical Rules
 
@@ -31,36 +15,51 @@ These rules address recurring mistakes that cause real issues. Each one prevents
 - Custom form handling bypasses the shared validation pipeline. Use `react-hook-form` + Zod to keep validation consistent.
 - Building custom UI when your component library already has the component creates visual inconsistency and double maintenance. Check your component library first.
 
-<!-- CUSTOMIZE: Add any project-specific or framework-specific critical rules here.
-Examples:
-- "When merging upstream, propagate infrastructure changes to all product apps."
-- "Use your framework's Server Action wrapper for auth + validation on every mutation."
-- "Never use the admin Supabase client without documenting why RLS bypass is needed."
--->
-
-## Monorepo
-
-<!-- CUSTOMIZE: List your apps/packages here, or remove this section for single-app projects. -->
-
 ## Commands
 
-<!-- CUSTOMIZE: Add your project's dev, build, test, and lint commands here.
-
-The builder-workflow and validator-workflow skills use the following standardised command names.
-Omit scripts you don't need — they're skipped automatically when not configured.
+This is a configuration repo — no app build or runtime commands. Hooks are Python scripts run via `uv`.
 
 | Command | Purpose |
 |---------|---------|
-| `pnpm test` | Unit tests (Vitest) |
-| `pnpm test:e2e` | E2E tests (Playwright) — run for frontend phases |
-| `pnpm test:db` | Database tests (PgTAP) — run for database phases |
-| `pnpm run typecheck` | Type checking (`tsc --noEmit`) |
-| `pnpm verify` | Full verification gate (typecheck + lint + test) |
--->
+| `uv run .claude/hooks/<hook>.py` | Run a hook script directly (for testing) |
+| `pytest tests/hooks/` | Run hook test suite |
 
 ## Architecture
 
-<!-- CUSTOMIZE: Describe your app's architecture (multi-tenant, data fetching, auth, type safety). -->
+### Pipeline Flow
+
+```
+/create-plan → /audit-plan → /review-plan → /implement
+```
+
+- **Thin dispatchers** — orchestrators stay lean, all heavy lifting in ephemeral workers
+- **Ephemeral agents** — fresh 200K context per phase, no contamination
+- **Builder worktree isolation** — parallel builders on separate git branches
+- **Group-based auditing** — cross-phase regression detection with deviation chaining
+- **5-layer quality gates** — PostToolUse hook → builder verification → validator /code-review → validator verification → group audit
+
+### Component Inventory
+
+| Component | Count | Location |
+|-----------|-------|----------|
+| Hooks | 9 events, 12 scripts | `.claude/hooks/` |
+| Skills | 27 | `.claude/skills/` |
+| Agents | 9 | `.claude/agents/` |
+| Rules | 16 | `.claude/rules/` (symlinked to `~/.claude/rules/`) |
+| MCP Servers | 5 | `~/.claude.json` |
+
+### Deployment
+
+Skills, agents, and rules are symlinked from this repo to `~/.claude/`. Hooks and `settings.json` are copied per-project (project-specific validators). MCP servers are configured at user level in `~/.claude.json`.
+
+### Hook Architecture
+
+All hooks are Python 3.11+ with zero external dependencies (stdlib only), run via `uv run --script`, with 10-second timeouts.
+
+Config files in `.claude/hooks/config/`:
+- `blocked-commands.json` — security gating patterns
+- `project-checks.json` — project-specific TypeScript validation rules
+- `quality-check-excludes.json` — path exclusions
 
 ## Code Style
 
@@ -77,4 +76,6 @@ Use the Task tool to delegate tasks to specialized sub-agents. Agents are define
 
 ## Verification
 
-<!-- CUSTOMIZE: Add your project's typecheck, lint, and test commands here. -->
+```bash
+pytest tests/hooks/    # Hook unit tests
+```

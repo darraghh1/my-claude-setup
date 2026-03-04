@@ -41,6 +41,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
   - [Draw.io](#drawio)
 - [Prompt Caching](#prompt-caching)
 - [Customization Guide](#customization-guide)
+- [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Plugins](#plugins)
 - [Community Addons](#community-addons)
@@ -309,13 +310,15 @@ Optional:
 │   ├── post_tool_use_failure.py    # Actionable guidance after tool failures
 │   ├── pre_compact.py              # Transcript backup before context compaction
 │   ├── pre_tool_use.py             # Blocks dangerous commands, logs tool calls
-│   ├── session_end.py              # Logs session end, plays completion sound
-│   ├── session_start.py            # Injects git branch/status into context
+│   ├── session_end.py              # Logs session end reason
+│   ├── session_start.py            # Injects git context, runs log cleanup + MCP health checks
 │   ├── stop.py                     # Transcript export + completion sound
 │   ├── user_prompt_submit.py       # Logs prompts, stores for status display
 │   ├── logs/                       # JSONL append-only logs (gitignored, grep-able across sessions)
 │   ├── utils/
 │   │   ├── constants.py            # Shared paths, log directory helpers, JSONL logging
+│   │   ├── log_cleanup.py          # Auto-rotates JSONL log (5MB), prunes sessions (30 days)
+│   │   ├── mcp_health.py           # MCP server binary availability checks
 │   │   └── notify.py               # Sound notification via HTTP (optional)
 │   └── validators/
 │       ├── typescript_validator.py  # Project-specific TS pattern checks (customisation template, not active by default)
@@ -372,7 +375,16 @@ Optional:
 ├── settings.local.json.example     # Template for local overrides (gitignored)
 docs/
 ├── workflow.md                     # Detailed pipeline workflow documentation
+├── setup-review-2026-03-03.md      # Full configuration review and recommendations
+├── future-enhancements.md          # Deferred items from setup review
 └── research/                       # Research documents (see Research section)
+tests/
+└── hooks/                          # Hook test suite (32 tests, run via uv)
+    ├── conftest.py                 # Test helpers: run_hook(), input builders
+    ├── run_tests.py                # Test runner (uv run --script with pytest dep)
+    ├── test_post_tool_use.py       # Quality gate tests (console.log, exports)
+    ├── test_pre_tool_use.py        # Security gate tests (force push, rm -rf, DROP)
+    └── test_typescript_validator.py # TypeScript validator tests (any, secrets, admin)
 
 .mcp.json.example                   # Example MCP server definitions (copy and add API keys)
 CLAUDE.md                           # Main project instructions
@@ -395,9 +407,8 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **Stop**               | `stop.py`                  | When Claude stops          | Exports JSONL transcript to `chat.json`. Plays completion sound. JSONL logging.                                                                                   |
 | **PreCompact**         | `pre_compact.py`           | Before context compaction  | Logs compaction events. Optionally backs up the transcript before compression.                                                                                    |
 | **UserPromptSubmit**   | `user_prompt_submit.py`    | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display.                                                                                      |
-| **SessionStart**       | `session_start.py`         | When a session begins      | Injects current git branch and uncommitted file count into Claude's context. Logs session start.                                                                  |
-| **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason. Plays completion sound.                                                                                                                  |
-|                        |                            |                            |                                                                                                                                                                   |
+| **SessionStart**       | `session_start.py`         | When a session begins      | Injects git branch/status into context. Runs log cleanup (rotates JSONL at 5MB, prunes sessions >30 days). Checks MCP server binary availability.                |
+| **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason and timestamp. Sound notification handled by Stop hook.                                                                                   |
 
 ### TypeScript Quality Checks
 
@@ -1033,6 +1044,31 @@ Edit `.claude/hooks/config/blocked-commands.json` to add or remove blocked comma
 ### 7. Sound Notifications (Optional)
 
 The `notify.py` utility sends HTTP requests to `localhost:9999` for sound alerts. If you do not have a sound server running, notifications fail silently and hooks continue normally. To disable the sound calls entirely, edit `utils/notify.py` to make the `notify()` function a no-op.
+
+---
+
+## Testing
+
+Hook quality gates are covered by a pytest test suite that verifies detection and enforcement behavior. Tests run the actual hook scripts as subprocesses (not mocked functions), catching import errors, JSON parsing bugs, and exit code issues.
+
+```bash
+# Run all 32 hook tests
+uv run tests/hooks/run_tests.py
+
+# Run a specific test file
+uv run tests/hooks/run_tests.py tests/hooks/test_pre_tool_use.py
+
+# Run with verbose output
+uv run tests/hooks/run_tests.py -v
+```
+
+The test runner uses `uv run --script` with an inline `pytest` dependency — no virtualenv setup needed.
+
+| Test File                       | Tests | Coverage                                               |
+| ------------------------------- | ----- | ------------------------------------------------------ |
+| `test_post_tool_use.py`         | 9     | console.log detection, default exports, skips, comments |
+| `test_pre_tool_use.py`          | 12    | Force push, rm -rf (safe/unsafe), DROP, TRUNCATE, stash |
+| `test_typescript_validator.py`  | 11    | `:any` types, hardcoded secrets, admin client, test file skips |
 
 ---
 

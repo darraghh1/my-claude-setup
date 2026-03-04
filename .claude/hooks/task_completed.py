@@ -35,11 +35,9 @@ def main():
             "are met before completing tasks.\n"
         )
 
-        # Exit 0 to allow completion (non-blocking by default).
-        # Change to exit 2 to block with the stderr message
-        # when you want stricter enforcement (e.g., require
-        # test pass confirmation in the task notes).
-        sys.exit(0)
+        # Exit 2 to block with verification reminder — enforces
+        # that teammates verify their work before marking done.
+        sys.exit(2)
 
     except (json.JSONDecodeError, Exception):
         sys.exit(0)

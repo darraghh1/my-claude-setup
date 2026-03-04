@@ -34,10 +34,9 @@ def main():
             "complete them before going idle.\n"
         )
 
-        # Exit 0 to allow idling (non-blocking by default).
-        # Change to exit 2 to block with the stderr message
-        # when you want stricter enforcement.
-        sys.exit(0)
+        # Exit 2 to block with the stderr message — enforces
+        # that teammates complete assigned work before idling.
+        sys.exit(2)
 
     except (json.JSONDecodeError, Exception):
         sys.exit(0)

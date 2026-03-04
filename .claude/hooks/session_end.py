@@ -4,9 +4,10 @@
 # dependencies = []
 # ///
 
-"""SessionEnd hook — logs session end reason and plays completion sound.
+"""SessionEnd hook — logs session end reason.
 
-Runs when a Claude Code session ends. Records the end event and notifies the user.
+Runs when a Claude Code session ends. Records the end event.
+Notification is handled by stop.py to avoid double-dinging.
 """
 
 import json
@@ -14,7 +15,6 @@ import sys
 from datetime import datetime
 
 from utils.constants import LOG_DIR
-from utils.notify import notify
 
 
 def log_session_end(input_data):
@@ -51,7 +51,6 @@ def main():
     try:
         input_data = json.loads(sys.stdin.read())
         log_session_end(input_data)
-        notify("complete")
     except (json.JSONDecodeError, Exception):
         pass
     sys.exit(0)

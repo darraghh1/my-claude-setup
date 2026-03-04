@@ -18,6 +18,8 @@ import subprocess
 import sys
 
 from utils.constants import LOG_DIR
+from utils.log_cleanup import cleanup
+from utils.mcp_health import check_mcp_health
 
 
 def get_git_context() -> str | None:
@@ -95,13 +97,32 @@ def main():
         input_data = json.loads(sys.stdin.read())
         log_session_start(input_data)
 
+        # --- Log cleanup (rotate JSONL, prune old sessions) ---
+        try:
+            cleanup()
+        except Exception:
+            pass  # Never block session start on cleanup failure
+
         # --- Context injection ---
+        context_parts = []
+
         git_context = get_git_context()
         if git_context:
+            context_parts.append(git_context)
+
+        # --- MCP health check ---
+        try:
+            mcp_warnings = check_mcp_health()
+            if mcp_warnings:
+                context_parts.extend(mcp_warnings)
+        except Exception:
+            pass  # Never block session start on health check failure
+
+        if context_parts:
             output = {
                 "hookSpecificOutput": {
                     "hookEventName": "SessionStart",
-                    "additionalContext": git_context,
+                    "additionalContext": "\n".join(context_parts),
                 }
             }
             print(json.dumps(output))
