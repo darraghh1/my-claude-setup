@@ -105,7 +105,7 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 | Role             | Lifetime              | Responsibility                                                                                                                                                                                                                                                                                 |
 | ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator** | Entire plan           | Processes groups sequentially, gate checks phases, spawns/shuts down agents, routes build/validate verdicts, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user)                                                                                                    |
-| **Builder**      | One phase (ephemeral) | **Standalone agent** (no team membership) in an **isolated git worktree** — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck, commits to worktree branch. Returns result via Agent tool (not SendMessage). Isolated task list prevents ID collisions with orchestrator. Does NOT review its own code. |
+| **Builder**      | One phase (ephemeral) | Full phase implementation in an **isolated git worktree** — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck, commits to worktree branch. Orchestrator merges branch before validation. Does NOT review its own code. |
 | **Validator**    | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator.                                                                                                                 |
 | **Auditor**      | One group (ephemeral) | Cross-phase analysis after a group completes — checks regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator.                                                                                                                |
 
@@ -130,10 +130,10 @@ The `/implement` orchestrator uses a **batch processing model** with strict conc
 | ----------------------- | ----------------------- | ------------------------------------------------------------- |
 | Builders per batch      | Max 2                   | Context pressure from parallel completions                    |
 | Validators per batch    | Max 2 (one per builder) | Each builder gets one validator                               |
-| Auditor                 | **Runs alone**          | Needs undivided orchestrator attention for triage              |
+| **Total active agents** | **Max 4**               | Orchestrator context budget                                   |
 | Batch overlap           | **None**                | Wait for current batch to fully complete before spawning next |
 
-Builders are **standalone agents** (no `team_name`) with isolated task lists — their internal `[Step]` tasks don't collide with the orchestrator's phase-level tasks. Validators and auditors remain team members. The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Up to 2 unblocked phases are spawned as parallel background builders, each with its own clean context. As each builder completes, a validator is spawned for its phase. The entire batch must finish — all builders done, all validators done, all verdicts processed — before the orchestrator loops back to find newly unblocked phases. No new builders are spawned mid-batch.
+The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Up to 2 unblocked phases are spawned as parallel builders (a "batch"), each with its own clean context. As each builder completes, a validator is spawned for its phase. The entire batch must finish — all builders done, all validators done, all verdicts processed — before the orchestrator loops back to find newly unblocked phases. No new builders are spawned mid-batch.
 
 ### Quality Gates
 
@@ -409,8 +409,6 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **UserPromptSubmit**   | `user_prompt_submit.py`    | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display.                                                                                      |
 | **SessionStart**       | `session_start.py`         | When a session begins      | Injects git branch/status into context. Runs log cleanup (rotates JSONL at 5MB, prunes sessions >30 days). Checks MCP server binary availability.                |
 | **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason and timestamp. Sound notification handled by Stop hook.                                                                                   |
-| **TaskCompleted**      | `task_completed.py`        | When a task is completed   | Deduped verification reminder — blocks first completion per task ID (5-min TTL), allows retry. Rate-limited to 3 blocks/min to prevent loops.                    |
-| **TeammateIdle**       | `teammate_idle.py`         | When a teammate goes idle  | Logs first idle per agent per 5-min window. Never blocks (exit 0) — idle is a normal state transition.                                                            |
 
 ### TypeScript Quality Checks
 

@@ -188,16 +188,15 @@ TeamCreate({
 
 ## Concurrency Limits
 
-**Hard cap: 2 builders per batch, 2 validators per batch.** Builders are standalone background agents; validators and auditors are team members. The auditor runs alone — no validators during audit.
+**Hard cap: 4 total active agents (builders + validators + auditor combined).** The auditor runs alone — no builders or validators during audit.
 
 | Constraint | Limit | Why |
 |-----------|-------|-----|
 | Builders per batch | Max 2 | Context pressure from parallel completions |
-| Validators per batch | Max 2 (one per completed builder) | Each builder gets one validator |
+| Validators per batch | Max 2 (one per active builder) | Each builder gets one validator |
+| **Total active agents** | **Max 4** | Orchestrator context budget |
 | Auditor | **Runs alone** | Needs undivided orchestrator attention for triage |
 | Batch overlap | **None** | Wait for current batch to fully complete before next |
-
-**Note:** Builders are standalone agents (no `team_name`), so they don't count toward team member limits. However, the orchestrator still processes their results, so the max-2 limit prevents context pressure.
 
 ## Step 6: Spawn Builders
 
@@ -205,16 +204,15 @@ Spawn a fresh builder for each unblocked phase that passed gate-checking. **Max 
 
 **Before spawning, extract the `skill:` field from each phase's YAML frontmatter.**
 
-Builders are **standalone agents** (no `team_name`). This gives each builder its own isolated task list, preventing ID collisions with the orchestrator's phase-level tasks. Use `run_in_background: true` to spawn parallel builders, then collect results via `TaskOutput`.
-
 ```
-Agent({
+Task({
   description: "Implement phase {NN}",
   subagent_type: "builder",
   model: "opus",
+  team_name: "{plan-name}-impl",
+  name: "builder-1",
   mode: "bypassPermissions",
   isolation: "worktree",
-  run_in_background: true,
   prompt: `Implement the phase at: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
 Skill: {skill-from-frontmatter}
@@ -226,19 +224,17 @@ Your first action: invoke the builder-workflow skill via Skill({ skill: "builder
 4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
 5. Run tests and typecheck
 6. Commit all changes to your worktree branch before reporting
-7. Provide a completion report as your final output (do NOT run /code-review — the validator handles that independently)
+7. Report completion to team-lead (do NOT run /code-review — the validator handles that independently)
 
 WORKTREE: You are in an isolated git worktree with your own branch. Your changes are invisible to other builders. You MUST commit before reporting completion — uncommitted changes cannot be merged. Use: git add -A && git commit -m "feat(phase-{NN}): {phase-title}"
 
-IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.
-
-NOTE: You are a standalone agent, NOT a team member. Your task list is isolated — TaskCreate/TaskUpdate won't collide with the orchestrator's tasks. Provide your completion report as your final text output.`
+IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
 })
 ```
 
 ## Step 7: Wait and Route Builder/Validator Cycle
 
-Builders run as standalone background agents (not team members). Wait for their Agent tool results via `TaskOutput`. When a builder completes:
+Wait for builder completion messages. When a builder reports done:
 
 ### 7a: Merge Worktree Branch
 
@@ -280,7 +276,7 @@ Run /code-review against the phase file, then verify with typecheck + tests. Rep
 1. Update phase YAML frontmatter: `status: done`
 2. Update Phase Table in plan.md: status → "Done"
 3. Mark the phase task as completed
-4. Shutdown the validator for this phase (builder already terminated — it's a standalone agent)
+4. Shutdown the builder and validator for this phase
 5. When the entire batch is complete, check: are ALL phases in the current group done?
    - **Yes** → proceed to Step 8 (Group Audit)
    - **No** → loop back to find next unblocked phases in this group, spawn next batch
@@ -290,8 +286,8 @@ Run /code-review against the phase file, then verify with typecheck + tests. Rep
    ```bash
    git revert --no-edit HEAD
    ```
-2. Shutdown the validator (builder already terminated — standalone agents end after returning their result)
-3. Spawn a **fresh builder** (standalone, with `isolation: "worktree"`) with the validator's fix instructions
+2. Shutdown current builder AND validator (both contexts may be stale)
+3. Spawn a **fresh builder** (with `isolation: "worktree"`) with the validator's fix instructions
 4. Wait for fix builder → merge branch → spawn fresh validator → re-validate → repeat until PASS
 
 ## Step 8: Group Audit
@@ -439,10 +435,10 @@ Loop back to Step 3 to start the next group.
 
 When all groups are done OR an error breakout condition is met:
 
-1. **Shutdown all active team members** (validators, auditors — builders are standalone and self-terminate):
+1. **Shutdown all active teammates:**
 
 ```
-// For each active teammate (validators, auditors):
+// For each active agent:
 SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 ```
 
