@@ -204,7 +204,7 @@ The template defines the exact sections, table columns, and verdict format. Inve
 After writing the review file, run the validation script to catch structural issues:
 
 ```bash
-python $CLAUDE_PROJECT_DIR/.claude/skills/code-review/scripts/validate_review.py {review-file-path}
+python ${CLAUDE_SKILL_DIR}/scripts/validate_review.py {review-file-path}
 ```
 
 If validation fails, fix the reported issues in the review file before proceeding. The script checks for missing sections, incorrect table formats, and forbidden patterns (like "Positive Observations" sections that aren't in the template).

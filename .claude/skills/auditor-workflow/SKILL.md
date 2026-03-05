@@ -342,30 +342,51 @@ Then go idle. The orchestrator will read the full report and decide next steps.
 
 ## Task Tracking
 
-Before starting work, run `TaskList` to check if tasks already exist from a previous session or context compact. If tasks exist, resume from the first `pending` or `in_progress` task.
+Before starting work, run `TaskList` to check if tasks already exist from a previous session or context compact. If tasks exist with your agent name as `owner`, resume from the first `in_progress` or `pending` task.
 
-If no tasks exist, create them after reading the group context (Step 1):
+If no tasks exist, create them after reading the group context (Step 1). **Prefix all task subjects with `[Audit]`**. Always set `owner` to your agent name and include structured `metadata`:
 
 ```
-Task 1: Read group phases and build inventory
-Task 2: Collect and review code reviews
-Task 3: Check deferred items against current code
-Task 4: Cross-phase impact analysis
-Task 5: Run verification (tests + typecheck)
-Task 6: Plan vs implementation comparison
-Task 7: Consider previous group deviations
-Task 8: Write audit report
-Task 9: Report to orchestrator
+TaskCreate({
+  subject: "[Audit] Read group phases and build inventory",
+  description: "Read all phase files in group, extract: phase number, title, status, skill, key files, acceptance criteria, dependencies. Build complete inventory.",
+  activeForm: "Reading group phases",
+  metadata: {
+    created_by: "{your-agent-name}",
+    agent_type: "auditor",
+    group: "{group-name}",
+    role: "audit",
+    attempt: 1,
+    parent_task_id: "{orchestrator-audit-task-id-from-spawn-prompt}"
+  }
+})
+// Then: TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
 ```
+
+**Standard auditor tasks:**
+
+| # | Subject | Description |
+|---|---------|-------------|
+| 1 | `[Audit] Read group phases and build inventory` | Extract phase metadata, build group inventory |
+| 2 | `[Audit] Collect and review code reviews` | Read review files, build cross-review summary |
+| 3 | `[Audit] Check deferred items against current code` | Verify each deferred item's current status |
+| 4 | `[Audit] Cross-phase impact analysis` | Shared files, overwrites, import chain integrity |
+| 5 | `[Audit] Run verification (tests + typecheck)` | Run pnpm test + typecheck, correlate failures |
+| 6 | `[Audit] Plan vs implementation comparison` | Acceptance criteria, scope, ADR compliance |
+| 7 | `[Audit] Consider previous group deviations` | Check for compounding, contradicting, or new drift |
+| 8 | `[Audit] Write audit report` | Write to reviews/implementation/group-{name}-audit.md |
+| 9 | `[Audit] Report to orchestrator` | SendMessage with structured findings |
 
 Mark each task `in_progress` when starting and `completed` when done.
 
 ## Resuming After Context Compact
 
-1. `TaskList` → find `in_progress` or first `pending` task
-2. `TaskGet` on that task → read details
-3. Continue from that task — don't restart
-4. The task list is your source of truth, not your memory
+1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
+2. Find your `in_progress` task, or if none, your first `pending` task
+3. `TaskGet` on that task → read the description AND `metadata`
+4. Metadata tells you: which group (`group`), and which orchestrator task you report to (`parent_task_id`)
+5. Continue from that task — don't restart
+6. The task list and metadata are your source of truth, not your memory
 
 ## Constraints
 

@@ -101,6 +101,47 @@ Create tasks via `TaskCreate` for each implementation step. **This is not option
 
 **Prefix all task subjects with `[Step]`** to distinguish from the orchestrator's phase-level tasks in the shared team task list. Mark each task `in_progress` before starting and `completed` when done.
 
+**Always set `owner`** to your agent name (from your spawn prompt) when creating tasks. This enables filtering in the shared namespace — without it, your tasks are indistinguishable from other agents' tasks after a compact.
+
+**Always include structured `metadata`** on every task:
+
+```
+TaskCreate({
+  subject: "[Step] Create change-role-dropdown.tsx",
+  description: "Create at app/home/[account]/roles/_components/. Props: { membershipId, accountSlug }. Fetch roles via listRolesAction, filter by hierarchy_level. Use @/components/ui Select, Badge.",
+  activeForm: "Creating role dropdown component",
+  metadata: {
+    created_by: "{your-agent-name}",
+    agent_type: "builder",
+    phase: "P{NN}",
+    group: "{group-name-from-frontmatter}",
+    skill: "{skill-from-frontmatter}",
+    role: "step",
+    attempt: 1,
+    parent_task_id: "{orchestrator-phase-task-id-from-spawn-prompt}"
+  }
+})
+```
+
+After creating, set yourself as owner:
+
+```
+TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
+```
+
+**Metadata fields:**
+
+| Field | Value | Purpose |
+|-------|-------|---------|
+| `created_by` | Your agent name | Identifies task creator |
+| `agent_type` | `"builder"` | Enables role-specific hook reminders |
+| `phase` | `"P{NN}"` | Links task to its phase |
+| `group` | From phase frontmatter | Links task to its audit group |
+| `skill` | From phase frontmatter | Domain skill used |
+| `role` | `"step"` | Distinguishes step tasks from phase/audit/fix tasks |
+| `attempt` | `1` (increment on retry) | Tracks retry cycles |
+| `parent_task_id` | From spawn prompt | Links builder steps back to orchestrator's phase task |
+
 **Task descriptions must be self-contained:**
 - File paths to create/modify
 - Function signatures, key parameters
@@ -202,10 +243,12 @@ Then go idle. The orchestrator will either assign the next phase or send a shutd
 
 If your context was compacted mid-phase:
 
-1. `TaskList` → find the `in_progress` or first `pending` task
-2. `TaskGet` on that task → read the self-contained description
-3. Continue from that task — don't restart the phase
-4. The task list is your source of truth, not your memory
+1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
+2. Find your `in_progress` task, or if none, your first `pending` task
+3. `TaskGet` on that task → read the description AND `metadata`
+4. Metadata tells you: which phase (`phase`), which group (`group`), which skill (`skill`), and which orchestrator task you report to (`parent_task_id`)
+5. Continue from that task — don't restart the phase
+6. The task list and metadata are your source of truth, not your memory
 
 ## Troubleshooting
 

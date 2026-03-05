@@ -54,9 +54,25 @@ Before creating tasks, run `TaskList` to check if tasks already exist from a pre
 2. Find the first task with status `pending` or `in_progress`
 3. Resume from that task — do NOT recreate the task list
 
-If no tasks exist, create them now. **Prefix all task subjects with `[Plan]`** to distinguish from the orchestrator's tasks in the shared team task list.
+If no tasks exist, create them now. **Prefix all task subjects with `[Plan]`** to distinguish from the orchestrator's tasks in the shared team task list. Always set `owner` to your agent name and include structured `metadata`:
 
-**Example task list:**
+```
+TaskCreate({
+  subject: "[Plan] Create plan.md scaffold",
+  description: "Write plan.md with all sections from template except Phase Table rows. Include: frontmatter, executive summary, phasing strategy, architectural north star, security requirements, implementation standards, success metrics, decision log, resources.",
+  activeForm: "Creating plan.md scaffold",
+  metadata: {
+    created_by: "{your-agent-name}",
+    agent_type: "planner",
+    role: "plan",
+    attempt: 1,
+    parent_task_id: "{orchestrator-task-id-from-spawn-prompt}"
+  }
+})
+// Then: TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
+```
+
+**Standard planner tasks:**
 
 ```
 [Plan] Create plan.md scaffold (all sections except Phase Table content)
@@ -335,14 +351,16 @@ Then go idle. The orchestrator will handle spawning review validators and routin
 
 If your context was compacted mid-planning:
 
-1. `TaskList` → find the `in_progress` or first `pending` task
-2. `TaskGet` on that task → read the self-contained description
-3. Continue from that task — don't restart the planning process
-4. The task list is your source of truth, not your memory
+1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
+2. Find your `in_progress` task, or if none, your first `pending` task
+3. `TaskGet` on that task → read the description AND `metadata`
+4. Metadata tells you: which orchestrator task you report to (`parent_task_id`)
+5. Continue from that task — don't restart the planning process
+6. The task list and metadata are your source of truth, not your memory
 
 **Pattern for every work cycle:**
 ```
-TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
+TaskList → filter by owner → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
 
 Tasks are the planner's source of truth for progress — not memory, not plan.md alone.

@@ -5,12 +5,21 @@
 # ///
 
 """
-PreCompact hook — logs compaction events and optionally backs
-up the transcript before context is compressed.
+PreCompact hook — injects agent-aware recovery context before compaction.
+
+When context is about to be compacted, this hook:
+1. Reads agent_id and agent_type from the hook event (new fields for subagents)
+2. Injects additionalContext with recovery instructions so the agent
+   knows who it is and how to resume after compaction
+3. Optionally backs up the transcript
+
+The additionalContext survives compaction — it's injected as a system message
+that the compacted summary includes. This is the primary compact recovery
+mechanism for team agents.
 
 Flags:
   --backup   Create transcript backup before compaction
-  --verbose  Print status messages
+  --verbose  Print status messages to stderr
 """
 
 import argparse
@@ -21,38 +30,86 @@ import shutil
 import sys
 from datetime import datetime
 
-from utils.constants import LOG_DIR
+from utils.constants import LOG_DIR, log_jsonl
 
 
-def log_pre_compact(input_data, custom_instructions):
-    """Log pre-compact event."""
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-    log_file = LOG_DIR / "pre_compact.json"
+ROLE_RECOVERY_HINTS = {
+    "builder": (
+        "You are a BUILDER agent. Your workflow skill is builder-workflow. "
+        "Your tasks are prefixed with [Step]. "
+        "Resume: TaskList → filter by owner (your name) → find in_progress → TaskGet → "
+        "read metadata for phase/group/skill/parent_task_id → continue implementation. "
+        "Do NOT restart the phase."
+    ),
+    "validator": (
+        "You are a VALIDATOR agent. Your workflow skill is validator-workflow. "
+        "Your tasks are prefixed with [Review]. "
+        "Resume: TaskList → filter by owner (your name) → find in_progress → TaskGet → "
+        "read metadata for phase/group/parent_task_id → continue validation. "
+        "Do NOT restart the review."
+    ),
+    "auditor": (
+        "You are an AUDITOR agent. Your workflow skill is auditor-workflow. "
+        "Your tasks are prefixed with [Audit]. You are READ-ONLY — do not modify source code. "
+        "Resume: TaskList → filter by owner (your name) → find in_progress → TaskGet → "
+        "read metadata for group/parent_task_id → continue audit."
+    ),
+    "planner": (
+        "You are a PLANNER agent. Your workflow skill is planner-workflow. "
+        "Your tasks are prefixed with [Plan]. "
+        "Resume: TaskList → filter by owner (your name) → find in_progress → TaskGet → "
+        "read metadata for parent_task_id → continue planning. "
+        "Do NOT restart the planning process."
+    ),
+}
 
-    if log_file.exists():
-        with open(log_file, "r") as f:
-            try:
-                log_data = json.load(f)
-            except (json.JSONDecodeError, ValueError):
-                log_data = []
-    else:
-        log_data = []
+DEFAULT_RECOVERY_HINT = (
+    "Resume: TaskList → find in_progress or first pending → TaskGet → "
+    "read description and metadata → continue from that task. "
+    "The task list is your source of truth, not your memory."
+)
 
-    log_entry = {
-        "session_id": input_data.get("session_id", "unknown"),
-        "hook_event_name": input_data.get(
-            "hook_event_name", "PreCompact"
-        ),
+
+def build_recovery_context(input_data: dict) -> str | None:
+    """Build agent-aware recovery context for injection."""
+    agent_id = input_data.get("agent_id", "")
+    agent_type = input_data.get("agent_type", "")
+    team_name = input_data.get("team_name", "")
+
+    # Only inject recovery context if we have agent identity info
+    if not agent_id and not agent_type:
+        return None
+
+    parts = ["CONTEXT COMPACTED — Recovery instructions:"]
+
+    if agent_id:
+        parts.append(f"Agent name: {agent_id}")
+    if agent_type:
+        parts.append(f"Agent type: {agent_type}")
+    if team_name:
+        parts.append(f"Team: {team_name}")
+
+    # Add role-specific recovery hint
+    hint = ROLE_RECOVERY_HINTS.get(agent_type, DEFAULT_RECOVERY_HINT)
+    parts.append("")
+    parts.append(hint)
+
+    return "\n".join(parts)
+
+
+def log_pre_compact(input_data: dict) -> None:
+    """Log pre-compact event to JSONL."""
+    session_id = input_data.get("session_id", "unknown")
+    log_jsonl("PreCompact", session_id, {
         "trigger": input_data.get("trigger", "unknown"),
-        "custom_instructions": custom_instructions,
-    }
-    log_data.append(log_entry)
+        "agent_id": input_data.get("agent_id", ""),
+        "agent_type": input_data.get("agent_type", ""),
+        "team_name": input_data.get("team_name", ""),
+        "custom_instructions": input_data.get("custom_instructions", ""),
+    })
 
-    with open(log_file, "w") as f:
-        json.dump(log_data, f, indent=2)
 
-
-def backup_transcript(transcript_path, trigger, custom_instructions=""):
+def backup_transcript(transcript_path: str, trigger: str, custom_instructions: str = "") -> str | None:
     """Create a backup of the transcript before compaction."""
     try:
         if not os.path.exists(transcript_path):
@@ -95,7 +152,7 @@ def main():
         parser.add_argument(
             "--verbose",
             action="store_true",
-            help="Print verbose output",
+            help="Print verbose output to stderr",
         )
         args = parser.parse_args()
 
@@ -104,39 +161,43 @@ def main():
         session_id = input_data.get("session_id", "unknown")
         transcript_path = input_data.get("transcript_path", "")
         trigger = input_data.get("trigger", "unknown")
-        custom_instructions = input_data.get(
-            "custom_instructions", ""
-        )
+        custom_instructions = input_data.get("custom_instructions", "")
 
-        log_pre_compact(input_data, custom_instructions)
+        # Log the event
+        log_pre_compact(input_data)
 
+        # Backup transcript if requested
         backup_path = None
         if args.backup and transcript_path:
             backup_path = backup_transcript(
                 transcript_path, trigger, custom_instructions
             )
 
+        # Build and inject recovery context for agents
+        recovery_context = build_recovery_context(input_data)
+
+        if recovery_context:
+            # Print to stdout — becomes additionalContext that survives compaction
+            print(recovery_context)
+
         if args.verbose:
-            if trigger == "manual":
-                message = (
-                    f"Preparing for manual compaction "
-                    f"(session: {session_id[:8]}...)"
+            agent_id = input_data.get("agent_id", "")
+            agent_type = input_data.get("agent_type", "")
+
+            if agent_id or agent_type:
+                msg = (
+                    f"[hook] PreCompact: agent={agent_id} type={agent_type} "
+                    f"trigger={trigger} — recovery context injected"
                 )
-                if custom_instructions:
-                    message += (
-                        f"\nCustom instructions: "
-                        f"{custom_instructions[:100]}..."
-                    )
+            elif trigger == "manual":
+                msg = f"[hook] PreCompact: manual compaction (session: {session_id[:8]}...)"
             else:
-                message = (
-                    f"Auto-compaction triggered "
-                    f"(session: {session_id[:8]}...)"
-                )
+                msg = f"[hook] PreCompact: auto-compaction (session: {session_id[:8]}...)"
 
             if backup_path:
-                message += f"\nTranscript backed up to: {backup_path}"
+                msg += f"\n  Transcript backed up to: {backup_path}"
 
-            print(message)
+            sys.stderr.write(msg + "\n")
 
         sys.exit(0)
 

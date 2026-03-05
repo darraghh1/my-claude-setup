@@ -42,7 +42,7 @@ This is a configuration repo — no app build or runtime commands. Hooks are Pyt
 
 | Component | Count | Location |
 |-----------|-------|----------|
-| Hooks | 9 events, 12 scripts | `.claude/hooks/` |
+| Hooks | 12 events, 13 scripts | `.claude/hooks/` |
 | Skills | 27 | `.claude/skills/` |
 | Agents | 9 | `.claude/agents/` |
 | Rules | 16 | `.claude/rules/` (symlinked to `~/.claude/rules/`) |

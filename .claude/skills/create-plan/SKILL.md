@@ -107,7 +107,7 @@ Codebase Exploration Summary:
 Plan folder: plans/{YYMMDD}-{feature-name}
 
 Your first action: invoke the planner-workflow skill via Skill({ skill: "planner-workflow" }). It teaches you how to:
-1. Read plan and phase templates from $CLAUDE_PROJECT_DIR/.claude/skills/create-plan/references/
+1. Read plan and phase templates from ${CLAUDE_SKILL_DIR}/references/
 2. Explore codebase for reference patterns
 3. Create plan.md scaffold
 4. Report checkpoint 1 to team-lead (plan summary for user review)

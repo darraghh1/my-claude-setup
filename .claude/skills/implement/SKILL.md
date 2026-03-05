@@ -105,7 +105,7 @@ If all phases are done:
 
 **3c: Create orchestrator tasks (first run only):**
 
-If no tasks exist yet, create tasks with **rich, self-contained descriptions**:
+If no tasks exist yet, create tasks with **rich, self-contained descriptions** and **structured metadata**. Record each task's ID — you'll pass phase task IDs to builders in their spawn prompts so they can set `parent_task_id`.
 
 ```
 TaskCreate({
@@ -122,7 +122,16 @@ Key deliverables from acceptance criteria:
 
 Gate check → build → validate → mark done.
 After all phases in group "{group-name}" complete, spawn auditor for group review.`,
-  activeForm: "Implementing Phase {NN} ({group-name})"
+  activeForm: "Implementing Phase {NN} ({group-name})",
+  metadata: {
+    created_by: "orchestrator",
+    agent_type: "orchestrator",
+    phase: "P{NN}",
+    group: "{group-name}",
+    skill: "{skill-from-frontmatter}",
+    role: "phase",
+    attempt: 1
+  }
 })
 ```
 
@@ -140,7 +149,14 @@ Plan folder: $ARGUMENTS
 
 Auditor reviews: cross-phase regressions, deferred items, plan drift, acceptance criteria.
 Triage: Clean/Low → continue. Medium → auto-fix. High/Critical → ask user.`,
-  activeForm: "Auditing group {group-name}"
+  activeForm: "Auditing group {group-name}",
+  metadata: {
+    created_by: "orchestrator",
+    agent_type: "orchestrator",
+    group: "{group-name}",
+    role: "audit",
+    attempt: 1
+  }
 })
 ```
 
@@ -216,11 +232,15 @@ Task({
   prompt: `Implement the phase at: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
 Skill: {skill-from-frontmatter}
+Group: {group-name}
+Parent task ID: {phase-task-id}
+
+Your agent name is "{builder-name}" — use this as owner on all tasks you create.
 
 Your first action: invoke the builder-workflow skill via Skill({ skill: "builder-workflow" }). It teaches you how to:
 1. Read the phase and extract requirements
 2. Invoke the Skill above (if not "none") and find reference files
-3. Create internal tasks (TaskCreate) for each step — prefix with [Step]. This is REQUIRED for context compact recovery
+3. Create internal tasks (TaskCreate) for each step — prefix with [Step], set owner to your name, include metadata (agent_type: "builder", phase, group, skill, parent_task_id). This is REQUIRED for context compact recovery
 4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
 5. Run tests and typecheck
 6. Commit all changes to your worktree branch before reporting
@@ -263,8 +283,13 @@ Task({
 
 Phase file: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
+Group: {group-name}
+Parent task ID: {phase-task-id}
 
-Run /code-review against the phase file, then verify with typecheck + tests. Report PASS/FAIL to team-lead via SendMessage.`
+Your agent name is "{validator-name}" — use this as owner on all tasks you create.
+
+Run /code-review against the phase file, then verify with typecheck + tests. Report PASS/FAIL to team-lead via SendMessage.
+Create [Review] tasks with metadata (agent_type: "validator", phase, group, parent_task_id) for compact recovery.`
 })
 ```
 
@@ -316,10 +341,13 @@ Task({
 
 Plan folder: $ARGUMENTS
 Group: {group-name}
+Parent task ID: {audit-task-id}
 Phases in this group:
 - Phase {NN}: {title} — $ARGUMENTS/phase-{NN}-{slug}.md
 - Phase {MM}: {title} — $ARGUMENTS/phase-{MM}-{slug}.md
 [...list all phases in group...]
+
+Your agent name is "{auditor-name}" — use this as owner on all tasks you create.
 
 Previous group deviations:
 {deviation-summary-from-previous-groups OR "None — this is the first group."}
@@ -479,18 +507,20 @@ SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 If you notice context was compacted:
 
 1. Run `TaskList` to see all tasks and their status
-2. Find the `in_progress` task — that's where you were
-3. Run `TaskGet {id}` on that task for full details
-4. Read plan.md to get the Phase Table and Group Summary
-5. Check existing audit reports in `$ARGUMENTS/reviews/implementation/` to rebuild deviation summaries
-6. Check if team exists: read `~/.claude/teams/{plan-name}-impl/config.json`
+2. Filter by `metadata.agent_type === "orchestrator"` to find your own tasks (ignore builder/validator/auditor tasks)
+3. Find the `in_progress` task — that's where you were
+4. Run `TaskGet {id}` on that task — metadata tells you: which phase (`phase`), which group (`group`), and what role (`role`: phase vs audit vs fix)
+5. Read plan.md to get the Phase Table and Group Summary
+6. Use task metadata to reconstruct group progress: count completed tasks per `metadata.group`
+7. Check existing audit reports in `$ARGUMENTS/reviews/implementation/` to rebuild deviation summaries
+8. Check if team exists: read `~/.claude/teams/{plan-name}-impl/config.json`
    - If team exists, teammates may still be active — coordinate via messages
    - If no team, re-create it
-7. Continue from the in_progress task
+9. Continue from the in_progress task
 
 **Pattern for every work cycle:**
 ```
-TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
+TaskList → filter by metadata.agent_type === "orchestrator" → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
 
 Tasks are the orchestrator's source of truth for progress — not memory, not plan.md alone.

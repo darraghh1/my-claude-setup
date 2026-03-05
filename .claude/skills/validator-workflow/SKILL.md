@@ -37,7 +37,48 @@ If either file doesn't exist, skip it — the project may not have those rules c
 
 These rules inform what you flag during review — import ordering, error handling, service patterns, data fetching conventions.
 
-## Step 1: Read the Phase
+## Step 1: Create Task List
+
+Before starting work, run `TaskList` to check if tasks already exist from a previous session or context compact. If tasks exist with your agent name as `owner`, resume from the first `in_progress` or `pending` task.
+
+If no tasks exist, create them now. **Prefix all task subjects with `[Review]`** to distinguish from builder and orchestrator tasks. Always set `owner` to your agent name.
+
+```
+TaskCreate({
+  subject: "[Review] Run code review for Phase {NN}",
+  description: "Invoke /code-review against phase file. Write review to {plan-folder}/reviews/code/phase-{NN}.md",
+  activeForm: "Running code review",
+  metadata: {
+    created_by: "{your-agent-name}",
+    agent_type: "validator",
+    phase: "P{NN}",
+    group: "{group-name}",
+    skill: "{skill-from-phase}",
+    role: "review",
+    attempt: 1,
+    parent_task_id: "{orchestrator-phase-task-id-from-spawn-prompt}"
+  }
+})
+```
+
+After creating, set yourself as owner:
+
+```
+TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
+```
+
+**Standard validator tasks:**
+
+| # | Subject | Description |
+|---|---------|-------------|
+| 1 | `[Review] Read phase and extract criteria` | Read phase file, extract acceptance criteria, skill, files |
+| 2 | `[Review] Run code review for Phase {NN}` | Invoke `/code-review`, record verdict |
+| 3 | `[Review] Run verification` | typecheck + tests + conditional E2E/DB |
+| 4 | `[Review] Determine verdict and report` | PASS/FAIL decision, SendMessage to team-lead |
+
+Mark each task `in_progress` before starting and `completed` when done.
+
+## Step 2: Read the Phase
 
 Read the phase file from your spawn prompt. Extract:
 
@@ -46,7 +87,7 @@ Read the phase file from your spawn prompt. Extract:
 - **Implementation steps** — what was supposed to be built
 - **Files created/modified** — scope of your review
 
-## Step 2: Run Code Review
+## Step 3: Run Code Review
 
 Invoke the code review skill against the phase:
 
@@ -62,7 +103,7 @@ This forks a sub-agent that:
 - Writes a review file to `{plan-folder}/reviews/code/phase-{NN}.md`
 - Returns a verdict with issue counts and what was fixed
 
-## Step 3: Run Verification
+## Step 4: Run Verification
 
 **Skip verification entirely** if the code review verdict is "Ready" with zero auto-fixes — the builder already passed tests + typecheck before reporting, and no source files changed since.
 
@@ -110,14 +151,14 @@ E2E tests: skipped (pnpm test:e2e not configured)
 
 This allows projects without E2E or DB tests to pass validation without false failures.
 
-## Step 4: Determine Verdict
+## Step 5: Determine Verdict
 
 Based on the code review results and verification (if it ran):
 
 - **PASS**: Code review verdict is "Ready", no unfixed Critical/High issues, and all verification passed (or was skipped because no files changed)
 - **FAIL**: Any unfixed Critical/High issues, or (if verification ran) typecheck errors, test failures, E2E failures, or DB test failures
 
-## Step 5: Report to Orchestrator
+## Step 6: Report to Orchestrator
 
 ```
 SendMessage({
@@ -128,7 +169,7 @@ SendMessage({
 })
 ```
 
-## Step 6: Go Idle
+## Step 7: Go Idle
 
 Wait for the next validation assignment or a shutdown request.
 
@@ -149,7 +190,9 @@ IMPORTANT: Before using the Write tool on any existing file, you MUST Read it fi
 
 If your context was compacted mid-validation:
 
-1. `TaskList` → find the `in_progress` or first `pending` task
-2. `TaskGet` on that task → read the self-contained description
-3. Continue from that task — don't restart the validation
-4. The task list is your source of truth, not your memory
+1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
+2. Find your `in_progress` task, or if none, your first `pending` task
+3. `TaskGet` on that task → read the description AND `metadata`
+4. Metadata tells you: which phase (`phase`), which group (`group`), and which orchestrator task you report to (`parent_task_id`)
+5. Continue from that task — don't restart the validation
+6. The task list and metadata are your source of truth, not your memory

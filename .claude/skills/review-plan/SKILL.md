@@ -224,7 +224,7 @@ The template defines the exact sections, table columns, and verdict format. Inve
 After writing the review file, run the validation script to catch structural issues:
 
 ```bash
-python $CLAUDE_PROJECT_DIR/.claude/skills/review-plan/scripts/validate_review.py {review-file-path}
+python ${CLAUDE_SKILL_DIR}/scripts/validate_review.py {review-file-path}
 ```
 
 The script auto-detects whether this is a plan.md review (Variant A) or phase review (Variant B). If validation fails, fix the reported issues in the review file before proceeding.

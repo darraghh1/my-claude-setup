@@ -140,6 +140,17 @@
           }
         ]
       }
+    ],
+    "InstructionsLoaded": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/instructions_loaded.py",
+            "timeout": 10000
+          }
+        ]
+      }
     ]
   }
 }

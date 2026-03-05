@@ -48,8 +48,21 @@ Extract:
 
 Break the task into concrete sub-tasks. Each task should be a single, completable unit of work.
 
+Always include structured `metadata` on every task for compact recovery and progress tracking:
+
 ```
-TaskCreate({ subject: "...", description: "...", activeForm: "..." })
+TaskCreate({
+  subject: "Create notifications service",
+  description: "Create createNotificationsService(client) at app/home/[account]/notifications/_lib/server/notifications.service.ts. Methods: list (paginated, account-scoped), markAsRead, create. Follow service pattern from existing services.",
+  activeForm: "Creating notifications service",
+  metadata: {
+    created_by: "dev",
+    agent_type: "orchestrator",
+    skill: "{domain-skill-used}",
+    role: "step",
+    attempt: 1
+  }
+})
 ```
 
 **Task descriptions must be self-contained** — include file paths, function signatures, and acceptance criteria. If your context gets compacted, the task description is all you'll have.
@@ -153,15 +166,15 @@ If you notice context was compacted or you're unsure of current progress:
 
 1. Run `TaskList` to see all tasks and their status
 2. Find the `in_progress` task — that's where you were
-3. Run `TaskGet {id}` on that task to read full details
+3. Run `TaskGet {id}` on that task — read description AND `metadata` for full context (skill used, role, attempt count)
 4. Continue from that task — don't restart from the beginning
 
-Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
+Tasks persist across compacts. The task list and metadata are your source of truth for progress, not your memory.
 
 **Pattern for every work session:**
 
 ```
-TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
+TaskList → find in_progress or first pending → TaskGet (read metadata) → continue work → TaskUpdate (completed) → next task
 ```
 
 ---
