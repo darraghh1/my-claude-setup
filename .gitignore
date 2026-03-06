@@ -32,6 +32,9 @@ node_modules/
 .DS_Store
 Thumbs.db
 
+# Root Claude config snapshot (hard-linked, contains secrets)
+.claude/root-claude/
+
 # Drafts
 reddit-post.md
 

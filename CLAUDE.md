@@ -45,12 +45,12 @@ This is a configuration repo — no app build or runtime commands. Hooks are Pyt
 | Hooks | 12 events, 13 scripts | `.claude/hooks/` |
 | Skills | 27 | `.claude/skills/` |
 | Agents | 9 | `.claude/agents/` |
-| Rules | 16 | `.claude/rules/` (symlinked to `~/.claude/rules/`) |
+| Rules | 16 | `rules/` (symlinked to `~/.claude/rules/`) |
 | MCP Servers | 5 | `~/.claude.json` |
 
 ### Deployment
 
-Skills, agents, and rules are symlinked from this repo to `~/.claude/`. Hooks and `settings.json` are copied per-project (project-specific validators). MCP servers are configured at user level in `~/.claude.json`.
+Skills and agents are directory-symlinked from `.claude/` to `~/.claude/`. Rules live in `rules/` at repo root with per-file symlinks to `~/.claude/rules/` (avoids double-loading in this project). Hooks and `settings.json` are copied per-project (project-specific validators). MCP servers are configured at user level in `~/.claude.json`.
 
 ### Hook Architecture
 
