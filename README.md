@@ -205,16 +205,23 @@ This makes skills, agents, and rules available globally across all projects via 
 # Clone the repo
 git clone https://github.com/your-org/my-claude-setup.git ~/Projects/my-claude-setup
 
-# Symlink skills, agents, and rules to user-level
+# Symlink skills and agents (directory symlinks)
 ln -sf ~/Projects/my-claude-setup/.claude/skills ~/.claude/skills
 ln -sf ~/Projects/my-claude-setup/.claude/agents ~/.claude/agents
-ln -sf ~/Projects/my-claude-setup/.claude/rules ~/.claude/rules
+
+# Symlink rules (per-file symlinks — see note below)
+mkdir -p ~/.claude/rules
+for f in ~/Projects/my-claude-setup/rules/*.md; do
+  ln -sf "$f" ~/.claude/rules/"$(basename "$f")"
+done
 
 # Copy hooks into each project (hooks stay project-level — they run project-specific validators)
 cp -r ~/Projects/my-claude-setup/.claude/hooks your-project/.claude/hooks
 cp ~/Projects/my-claude-setup/.claude/settings.json your-project/.claude/settings.json
 cp ~/Projects/my-claude-setup/CLAUDE.md your-project/CLAUDE.md
 ```
+
+> **Why per-file symlinks for rules?** Skills and agents use directory symlinks because they live under `.claude/` and don't conflict. Rules are different — if you directory-symlink `.claude/rules/` in this repo, Claude Code loads them twice: once from the project's `.claude/rules/` and once from your user-level `~/.claude/rules/`. Per-file symlinks from `rules/` (at the repo root) to `~/.claude/rules/` avoids this double-loading. Your application projects are unaffected — they don't contain the source rule files.
 
 Add MCP servers to your user-level config (`~/.claude.json`):
 
@@ -259,6 +266,7 @@ Copy everything into each project individually. Simpler setup, but updates must 
 
 ```bash
 cp -r .claude/ your-project/.claude/
+cp -r rules/ your-project/.claude/rules/    # Rules live at repo root — copy into project's .claude/rules/
 cp .mcp.json.example your-project/.mcp.json
 cp CLAUDE.md your-project/CLAUDE.md
 # Edit your-project/.mcp.json and add your API keys
@@ -266,7 +274,7 @@ cp CLAUDE.md your-project/CLAUDE.md
 
 ### After Either Option
 
-1. **Run `/customize`** to fill in project-specific details. This onboarding wizard collects your project info (name, commands, architecture, component library, etc.) and fills all `<!-- CUSTOMIZE -->` markers across CLAUDE.md and rule files automatically. Or search for markers manually with `grep -rn "CUSTOMIZE" CLAUDE.md .claude/rules/`.
+1. **Run `/customize`** to fill in project-specific details. This onboarding wizard collects your project info (name, commands, architecture, component library, etc.) and fills all `<!-- CUSTOMIZE -->` markers across CLAUDE.md and rule files automatically. Or search for markers manually with `grep -rn "CUSTOMIZE" CLAUDE.md rules/`.
 1. **Start Claude Code** in your project directory. The hooks, skills, and rules load automatically.
 
 ---
@@ -326,23 +334,8 @@ Optional:
 │       ├── validate_new_file.py         # Checks a new file was created
 │       ├── validate_no_placeholders.py  # Detects placeholder/skeleton content
 │       └── validate_tdd_tasks.py        # Enforces TDD task ordering in plans
-├── rules/                          # 16 rule files
-│   ├── admin.md                    # Admin operations guidelines
-│   ├── coding-style.md             # TypeScript/React coding standards
-│   ├── database.md                 # Supabase/Postgres patterns and RLS
-│   ├── date-formatting.md          # Date parsing (YYYY-MM-DD as local time, not UTC)
-│   ├── domain-patterns.md          # Compressed domain skill patterns (passive context for agents)
-│   ├── forms.md                    # Form handling with react-hook-form + Zod
-│   ├── git-workflow.md             # Branch strategy and commit conventions
-│   ├── i18n.md                     # Internationalization patterns
-│   ├── mcp-tools.md                # MCP server usage guide
-│   ├── pages-and-layouts.md        # Next.js page and layout conventions
-│   ├── patterns.md                 # Data fetching, mutations, service patterns
-│   ├── pre-implementation-analysis.md  # Blast radius, security, and pattern checks before writing code
-│   ├── route-handlers.md           # API route handler conventions
-│   ├── security.md                 # RLS, secrets, auth, multi-tenant isolation
-│   ├── testing.md                  # Vitest, mocking, TDD workflow
-│   └── ui-components.md            # Component library usage guidelines
+├── rules/                          # ⚠️ MOVED — see note below
+│   └── (symlinked per-file to ~/.claude/rules/)
 ├── skills/                         # 27 skill directories (each with SKILL.md)
 │   ├── auditor-workflow/
 │   ├── audit-plan/
@@ -378,6 +371,23 @@ docs/
 ├── setup-review-2026-03-03.md      # Full configuration review and recommendations
 ├── future-enhancements.md          # Deferred items from setup review
 └── research/                       # Research documents (see Research section)
+rules/                                  # 16 user-level rule files (symlinked to ~/.claude/rules/)
+├── admin.md                        # Admin operations guidelines
+├── coding-style.md                 # TypeScript/React coding standards
+├── database.md                     # Supabase/Postgres patterns and RLS
+├── date-formatting.md              # Date parsing (YYYY-MM-DD as local time, not UTC)
+├── domain-patterns.md              # Compressed domain skill patterns (passive context for agents)
+├── forms.md                        # Form handling with react-hook-form + Zod
+├── git-workflow.md                 # Branch strategy and commit conventions
+├── i18n.md                         # Internationalization patterns
+├── mcp-tools.md                    # MCP server usage guide
+├── pages-and-layouts.md            # Next.js page and layout conventions
+├── patterns.md                     # Data fetching, mutations, service patterns
+├── pre-implementation-analysis.md  # Blast radius, security, and pattern checks before writing code
+├── route-handlers.md               # API route handler conventions
+├── security.md                     # RLS, secrets, auth, multi-tenant isolation
+├── testing.md                      # Vitest, mocking, TDD workflow
+└── ui-components.md                # Component library usage guidelines
 tests/
 └── hooks/                          # Hook test suite (32 tests, run via uv)
     ├── conftest.py                 # Test helpers: run_hook(), input builders
@@ -725,7 +735,7 @@ Rules use a **two-layer complementary system**. User-level rules define universa
 
 | Layer             | Location                                               | Purpose                                                                           |
 | ----------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| **User-level**    | `~/.claude/rules/` (symlinked from this repo)          | Generic Next.js/Supabase/TypeScript patterns. Complete and correct on their own.  |
+| **User-level**    | `rules/` in this repo (per-file symlinks to `~/.claude/rules/`) | Generic Next.js/Supabase/TypeScript patterns. Complete and correct on their own.  |
 | **Project-level** | `your-project/.claude/rules/project-implementation.md` | Framework-specific overrides — maps universal patterns to your stack's utilities. |
 
 Rules are **additive** in Claude Code — both levels load simultaneously. 11 of the 16 user-level rules include a cross-reference: _"If your project has a `project-implementation.md` rule, check it for framework-specific overrides."_ This guides Claude to check for project-specific implementations of each universal pattern.
