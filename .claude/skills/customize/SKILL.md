@@ -2,7 +2,6 @@
 name: customize
 description: "Onboarding wizard that collects project details and fills all CUSTOMIZE markers across CLAUDE.md and rule files automatically."
 argument-hint: "[optional: project-name]"
-disable-model-invocation: true
 context: fork
 agent: general-purpose
 allowed-tools: "Read Write Edit Glob Grep Bash(grep*) AskUserQuestion TaskCreate TaskUpdate TaskList TaskGet"
@@ -35,6 +34,7 @@ looks like (the "Acme HR" reference project).
 Tasks survive context compacts — skipping this check causes lost progress and repeated work.
 
 Before starting work, run `TaskList` to check if tasks already exist from a previous session or before a compact. If tasks exist:
+
 1. Read existing tasks with `TaskGet` for each task ID
 2. Find the first task with status `pending` or `in_progress`
 3. Resume from that task — do NOT recreate the task list
@@ -42,6 +42,7 @@ Before starting work, run `TaskList` to check if tasks already exist from a prev
 If no tasks exist, create them after the first round of user questions:
 
 **Example task list:**
+
 ```
 Task 1: Collect project brief (all rounds)
 Task 2: Read all CUSTOMIZE markers
@@ -65,14 +66,14 @@ Ask these questions using `AskUserQuestion`:
 1. **Project name and description** — "What is your project name and a one-line description?"
    - Example: "Acme SaaS — workforce management platform"
 
-2. **App structure** — "Is this a monorepo or single app?"
+1. **App structure** — "Is this a monorepo or single app?"
    - If monorepo: ask for app names, ports, and purposes in follow-up
    - If single-app: note this and skip monorepo section
 
-3. **Package manager** — "Which package manager?"
+1. **Package manager** — "Which package manager?"
    - Options: npm, pnpm, yarn, bun
 
-4. **Component library** — "What UI component library do you use?"
+1. **Component library** — "What UI component library do you use?"
    - Options: shadcn/ui, Radix UI, MUI, custom, none
    - Follow up: "What is the import path?" (e.g., `@/components/ui`, `~/components`)
 
@@ -146,28 +147,35 @@ Read each file completely before editing.
 This is the most important file — Claude reads it on every conversation.
 
 ### Marker: Project description (top of file)
+
 Replace the `<!-- CUSTOMIZE: Replace with a brief description -->` comment with a one-line
 description. Example: `Acme SaaS — Next.js App Router, Supabase, TypeScript.`
 
 Remove the entire HTML comment block (the template instructions at the top of the file).
 
 ### Marker: Critical Rules
+
 Add any framework-specific critical rules from the intake. Examples:
+
 - If using a Server Action wrapper: "Skipping {wrapper} means unauthenticated data can reach the database."
 - If using a specific logger: "Use `getLogger()` from `{path}` instead of console.log."
 - If monorepo with upstream: "When merging upstream, propagate infrastructure changes to all product apps."
 
 ### Marker: Monorepo
+
 - If monorepo: Add a table with app names, ports, and purposes
 - If single-app: Remove the `## Monorepo` section entirely
 
 ### Marker: Commands
+
 Add all commands from the intake in a code block. Group by category (dev, test, build, deploy).
 
 ### Marker: Architecture
+
 Describe: multi-tenant model, data fetching patterns, auth, RLS approach, any special systems.
 
 ### Marker: Verification
+
 Add the project's verify/check commands (typecheck, lint, test).
 
 ## Step 4: Fill Rule Files
@@ -175,6 +183,7 @@ Add the project's verify/check commands (typecheck, lint, test).
 For each rule file, replace `<!-- CUSTOMIZE -->` markers with project-specific content.
 
 ### git-workflow.md
+
 - Remotes table (origin URL, upstream if applicable)
 - Branch strategy (adjust the table)
 - Verify command
@@ -182,46 +191,57 @@ For each rule file, replace `<!-- CUSTOMIZE -->` markers with project-specific c
 - Upstream merge process (if forked from template, otherwise remove section)
 
 ### database.md
+
 - Migration/typegen command paths
 - RLS helper functions (list any existing helpers, or keep the example)
 - OTP components (if framework provides them, otherwise remove marker)
 
 ### patterns.md
+
 - Server Action wrapper (replace manual pattern with framework wrapper if applicable)
 - Supabase client import paths (update the table)
 - Auth/account model (adjust or remove multi-tenant section)
 
 ### coding-style.md
+
 - Server Action wrapper reference (match patterns.md)
 
 ### security.md
+
 - Auth wrapper documentation
 
 ### ui-components.md
+
 - Component library name and import path
 
 ### forms.md
+
 - Server Action wrapper
 - Form component library imports
 
 ### testing.md
+
 - Test directory structure
 - Test commands
 
 ### i18n.md
+
 - i18n setup (library, config)
 - Translation namespaces
 - If no i18n: Delete the entire file (or leave as-is for future use)
 
 ### admin.md
+
 - Admin verification pattern
 
 ### pages-and-layouts.md
+
 - Loading component
 - Workspace providers
 - Feature flags (if applicable)
 
 ### route-handlers.md
+
 - Route handler wrapper (if framework provides one)
 
 ## Step 5: Clean Up Markers
@@ -230,11 +250,9 @@ After filling all markers:
 
 1. **Remove all `<!-- CUSTOMIZE -->` comments** — they served as prompts and should be
    deleted after customization. The content they prompted for is now filled in.
-
-2. **Remove the template instruction block** at the top of CLAUDE.md (the HTML comment
+1. **Remove the template instruction block** at the top of CLAUDE.md (the HTML comment
    with "SETUP INSTRUCTIONS").
-
-3. **Update file headers** — Change generic titles to project-specific ones:
+1. **Update file headers** — Change generic titles to project-specific ones:
    - `# Patterns — Next.js Supabase TypeScript` could become
      `# Patterns — Acme Next.js Supabase`
 
@@ -254,6 +272,7 @@ information, ask the user.
 ### Check 2: CLAUDE.md has content in all sections
 
 Read back `CLAUDE.md` and verify:
+
 - [ ] Project description is present (not a placeholder)
 - [ ] Critical Rules section has content
 - [ ] Monorepo section has content OR was removed for single-app
@@ -270,6 +289,7 @@ grep -c "SETUP INSTRUCTIONS" CLAUDE.md || echo "Template header removed!"
 ### Report
 
 Print a summary:
+
 ```
 Customization complete for {project-name}!
 
@@ -299,6 +319,7 @@ If you notice context was compacted or you're unsure of current progress:
 Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
 
 **Pattern for every work session:**
+
 ```
 TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
@@ -306,18 +327,22 @@ TaskList → find in_progress or first pending → TaskGet → continue work →
 ## Troubleshooting
 
 ### Markers remain after Step 6 validation
+
 The most common cause is a marker inside an HTML comment that looks like content.
 Read the file, find the `<!-- CUSTOMIZE` comment, and either fill it or delete it.
 If the marker needs information you don't have, use `AskUserQuestion` to ask.
 
 ### User unsure about commands or paths
+
 Offer to read their `package.json` for commands: `Read package.json` and extract scripts.
 For monorepo structures, `Glob "apps/*/package.json"` reveals app layout.
 
 ### i18n section not applicable
+
 If the project doesn't use i18n, you can either delete `.claude/rules/i18n.md` entirely
 or leave it with a note at the top: "i18n is not currently used in this project."
 
 ### User provides minimal answers
+
 Ask follow-up questions. A one-word answer like "pnpm" is fine for package manager, but
 "yes" for monorepo needs follow-up: "What are your app names, ports, and purposes?"

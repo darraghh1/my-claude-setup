@@ -2,10 +2,6 @@
 name: review-plan
 description: "Review plan.md or a single phase file against templates and codebase compliance. One file per invocation."
 argument-hint: "[plan-folder] [phase NN]"
-disable-model-invocation: true
-context: fork
-agent: general-purpose
-model: sonnet
 allowed-tools: "Read Grep Glob Write Edit Bash(python*) TaskCreate TaskUpdate TaskList TaskGet"
 metadata:
   version: 1.1.0
@@ -20,6 +16,7 @@ metadata:
 Arguments are provided above via `$ARGUMENTS`. Asking the user to re-provide them wastes their time since the data is already available. Parse them and proceed with the review.
 
 Parse the arguments to determine what to review:
+
 - If arguments contain "phase" followed by a number → Review that phase file
 - If arguments contain only a folder path → Review plan.md
 - The first part is always the plan folder path (e.g., `plans/voice-assistant`)
@@ -35,24 +32,24 @@ Examples: `plans/voice-assistant` → review plan.md | `plans/voice-assistant ph
 
 This skill performs two complementary checks:
 
-| Layer | What It Catches | Example |
-|-------|----------------|---------|
-| **Template Compliance** | Missing sections, incomplete structure | No "Step 0: TDD" section, missing acceptance criteria |
+| Layer                   | What It Catches                                    | Example                                                           |
+| ----------------------- | -------------------------------------------------- | ----------------------------------------------------------------- |
+| **Template Compliance** | Missing sections, incomplete structure             | No "Step 0: TDD" section, missing acceptance criteria             |
 | **Codebase Compliance** | Code blocks that won't compile or violate patterns | Wrong Server Action pattern, missing auth check, bad import paths |
 
 **Why two layers?** Template compliance alone produces "12/12 Ready" verdicts for phases containing compilation-breaking issues. In real reviews, template compliance caught 0 of 26 actual issues. All real problems were codebase compliance — wrong API signatures, missing imports, naming violations, patterns that wouldn't work.
 
-| Issue Type | Template Check | Codebase Check |
-|------------|:--------------:|:--------------:|
-| Missing section | Caught | N/A |
-| Wrong Server Action pattern (missing auth/validation) | Missed | Caught |
-| Missing `getSession()` auth check | Missed | Caught |
-| Bad import path (wrong alias resolution) | Missed | Caught |
-| Schema file in plural `schemas/` not singular `schema/` | Missed | Caught |
-| Server action missing account slug resolution | Missed | Caught |
-| Exported class instead of factory wrapping private class | Missed | Caught |
-| Missing `server-only` import | Missed | Caught |
-| Plan says "update documentation" (violates CLAUDE.md) | Missed | Caught |
+| Issue Type                                               | Template Check | Codebase Check |
+| -------------------------------------------------------- | :------------: | :------------: |
+| Missing section                                          |     Caught     |      N/A       |
+| Wrong Server Action pattern (missing auth/validation)    |     Missed     |     Caught     |
+| Missing `getSession()` auth check                        |     Missed     |     Caught     |
+| Bad import path (wrong alias resolution)                 |     Missed     |     Caught     |
+| Schema file in plural `schemas/` not singular `schema/`  |     Missed     |     Caught     |
+| Server action missing account slug resolution            |     Missed     |     Caught     |
+| Exported class instead of factory wrapping private class |     Missed     |     Caught     |
+| Missing `server-only` import                             |     Missed     |     Caught     |
+| Plan says "update documentation" (violates CLAUDE.md)    |     Missed     |     Caught     |
 
 **Note:** Codebase compliance is skipped for plan.md reviews (only phases contain code blocks).
 
@@ -61,6 +58,7 @@ This skill performs two complementary checks:
 Tasks survive context compacts — skipping this check causes lost progress and repeated work.
 
 Before starting work, run `TaskList` to check if tasks already exist from a previous session or before a compact. If tasks exist:
+
 1. Read existing tasks with `TaskGet` for each task ID
 2. Find the first task with status `pending` or `in_progress`
 3. Resume from that task — do NOT recreate the task list
@@ -68,6 +66,7 @@ Before starting work, run `TaskList` to check if tasks already exist from a prev
 If no tasks exist, create them after determining the review type (Step 1):
 
 **Example task list (phase review):**
+
 ```
 Task 1: Determine review type and read template
 Task 2: Read the target phase file
@@ -95,6 +94,7 @@ Write to: `{plan-folder}/reviews/planning/plan.md`
 Write to: `{plan-folder}/reviews/planning/phase-{NN}.md`
 
 Examples:
+
 - `plans/250202-voice-assistant/reviews/planning/plan.md` (plan.md)
 - `plans/250202-voice-assistant/reviews/planning/phase-01.md` (phase 01)
 - `plans/250202-voice-assistant/reviews/planning/phase-12.md` (phase 12)
@@ -108,8 +108,9 @@ Create the `reviews/planning/` directory if it doesn't exist. You may ONLY write
 ### Step 1: Determine Review Type
 
 Use the arguments parsed at the top of this document:
+
 - No phase specified → Review plan.md
-- `phase NN` or bare number specified → Review phase-NN-*.md
+- `phase NN` or bare number specified → Review phase-NN-\*.md
 
 ### Step 2: Read the Appropriate Template
 
@@ -154,6 +155,7 @@ echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validat
 Include any validator failures in the review findings as Critical issues.
 
 Then go through the template section-by-section manually:
+
 - Check if each required section exists in the target file
 - Note missing sections
 - Note incomplete sections (header exists but content missing)
@@ -173,16 +175,17 @@ See [checklist.md](checklist.md) for detailed criteria covering:
 
 Classify the phase by its primary deliverable:
 
-| Phase Type | Indicators | Reference Pattern to Search |
-|------------|------------|----------------------------|
-| **Schema/Database** | Creates tables, migrations, RLS | `supabase/migrations/*.sql` |
-| **Service** | Creates `createXxxService()` | `app/home/[account]/**/*service*.ts` |
-| **Server Action** | Creates Server Actions with auth + Zod | `app/home/[account]/**/*server-actions*.ts` |
-| **Schema (Zod)** | Creates validation schemas | `app/home/[account]/**/*.schema.ts` |
-| **UI/Component** | Creates React components, pages | `app/home/[account]/**/_components/*.tsx` |
-| **Mixed** | Multiple types | Find reference for each type |
+| Phase Type          | Indicators                             | Reference Pattern to Search                 |
+| ------------------- | -------------------------------------- | ------------------------------------------- |
+| **Schema/Database** | Creates tables, migrations, RLS        | `supabase/migrations/*.sql`                 |
+| **Service**         | Creates `createXxxService()`           | `app/home/[account]/**/*service*.ts`        |
+| **Server Action**   | Creates Server Actions with auth + Zod | `app/home/[account]/**/*server-actions*.ts` |
+| **Schema (Zod)**    | Creates validation schemas             | `app/home/[account]/**/*.schema.ts`         |
+| **UI/Component**    | Creates React components, pages        | `app/home/[account]/**/_components/*.tsx`   |
+| **Mixed**           | Multiple types                         | Find reference for each type                |
 
 **Find the closest reference implementation:**
+
 1. Use Glob to find 2-3 files matching the phase type pattern
 2. Read the most relevant one (prefer files in similar feature areas)
 3. This reference is your ground truth for what correct code looks like
@@ -202,6 +205,7 @@ For each code block in the phase file:
 **Only flag verifiable deviations.** If you can see the correct pattern in the reference file and the phase code differs, that's a valid finding. Flagging ambiguous or intentional design choices produces noisy reviews that waste the user's time.
 
 **Severity guide:**
+
 - **Critical**: Won't compile or will crash at runtime (wrong function signature, bad imports)
 - **High**: Violates security or established patterns (missing auth, wrong RLS, missing permission check)
 - **Medium**: Naming/convention violations that cause confusion (wrong file paths, inconsistent naming)
@@ -210,12 +214,14 @@ For each code block in the phase file:
 ### Step 8: Read Output Template and Write Review File
 
 Reviews written without reading the template first produce inconsistent formats that the user cannot compare across phases. Read `PLAN-REVIEW-TEMPLATE.md` and follow the exact format specified:
+
 - **Variant A** for plan.md reviews
 - **Variant B** for phase reviews
 
 The template defines the exact sections, table columns, and verdict format. Inventing custom formats breaks the user's ability to track review status consistently across phases.
 
 **Write to:**
+
 - Plan.md review: `{plan-folder}/reviews/planning/plan.md`
 - Phase review: `{plan-folder}/reviews/planning/phase-{NN}.md`
 
@@ -303,6 +309,7 @@ If you notice context was compacted or you're unsure of current progress:
 Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
 
 **Pattern for every work session:**
+
 ```
 TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```

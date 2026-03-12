@@ -1,7 +1,6 @@
 ---
 name: validator-workflow
 description: "Phase-level validation workflow for validator agents. Handles loading project rules, reading phase files, running /code-review, conditional verification (unit tests + typecheck + E2E/DB tests based on phase type), determining verdict, and reporting to the orchestrator. Invoke this skill as your first action — not user-invocable."
-user-invocable: false
 metadata:
   version: 1.0.0
 ---
@@ -14,13 +13,13 @@ You have been assigned a **phase to validate** after a builder reports completio
 
 The user experienced validators that ran shallow checks, missed pattern deviations, and didn't catch issues introduced by auto-fixes. Each step below prevents a specific failure:
 
-| Step | Prevents |
-|------|----------|
-| Load project rules | Reviewing without knowing coding conventions (teammates don't inherit parent rules) |
-| Read phase completely | Reviewing against wrong acceptance criteria |
-| Run /code-review | Self-review blind spots — builder never reviews its own code |
-| Conditional verification | Frontend bugs missed without E2E, DB bugs missed without PgTAP |
-| Actionable FAIL reports | Fix builders guessing at what's broken, producing more failures |
+| Step                     | Prevents                                                                            |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| Load project rules       | Reviewing without knowing coding conventions (teammates don't inherit parent rules) |
+| Read phase completely    | Reviewing against wrong acceptance criteria                                         |
+| Run /code-review         | Self-review blind spots — builder never reviews its own code                        |
+| Conditional verification | Frontend bugs missed without E2E, DB bugs missed without PgTAP                      |
+| Actionable FAIL reports  | Fix builders guessing at what's broken, producing more failures                     |
 
 ## Step 0: Load Project Rules
 
@@ -69,12 +68,12 @@ TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
 
 **Standard validator tasks:**
 
-| # | Subject | Description |
-|---|---------|-------------|
-| 1 | `[Review] Read phase and extract criteria` | Read phase file, extract acceptance criteria, skill, files |
-| 2 | `[Review] Run code review for Phase {NN}` | Invoke `/code-review`, record verdict |
-| 3 | `[Review] Run verification` | typecheck + tests + conditional E2E/DB |
-| 4 | `[Review] Determine verdict and report` | PASS/FAIL decision, SendMessage to team-lead |
+| #   | Subject                                    | Description                                                |
+| --- | ------------------------------------------ | ---------------------------------------------------------- |
+| 1   | `[Review] Read phase and extract criteria` | Read phase file, extract acceptance criteria, skill, files |
+| 2   | `[Review] Run code review for Phase {NN}`  | Invoke `/code-review`, record verdict                      |
+| 3   | `[Review] Run verification`                | typecheck + tests + conditional E2E/DB                     |
+| 4   | `[Review] Determine verdict and report`    | PASS/FAIL decision, SendMessage to team-lead               |
 
 Mark each task `in_progress` before starting and `completed` when done.
 
@@ -96,6 +95,7 @@ Skill({ skill: "code-review", args: "[phase-file-path]" })
 ```
 
 This forks a sub-agent that:
+
 - Reads the phase document and extracts all implementation steps
 - Finds reference implementations from the codebase (ground truth)
 - Reviews each file against phase spec AND codebase patterns
@@ -122,15 +122,15 @@ Both must pass. If auto-fixes introduced issues, fix them.
 
 The phase's `skill:` frontmatter field determines which additional tests to run:
 
-| Phase Skill | Extra Test | Command |
-|-------------|-----------|---------|
-| `react-form-builder` | E2E tests | `pnpm test:e2e` (scoped) |
-| `vercel-react-best-practices` | E2E tests | `pnpm test:e2e` (scoped) |
-| `web-design-guidelines` | E2E tests | `pnpm test:e2e` (scoped) |
-| `playwright-e2e` | E2E tests | `pnpm test:e2e` (scoped) |
-| `postgres-expert` | DB tests | `pnpm test:db` |
-| `server-action-builder` | Unit tests sufficient | — |
-| `service-builder` | Unit tests sufficient | — |
+| Phase Skill                   | Extra Test            | Command                  |
+| ----------------------------- | --------------------- | ------------------------ |
+| `react-form-builder`          | E2E tests             | `pnpm test:e2e` (scoped) |
+| `vercel-react-best-practices` | E2E tests             | `pnpm test:e2e` (scoped) |
+| `web-design-guidelines`       | E2E tests             | `pnpm test:e2e` (scoped) |
+| `playwright-e2e`              | E2E tests             | `pnpm test:e2e` (scoped) |
+| `postgres-expert`             | DB tests              | `pnpm test:db`           |
+| `server-action-builder`       | Unit tests sufficient | —                        |
+| `service-builder`             | Unit tests sufficient | —                        |
 
 ### E2E Test Scoping
 

@@ -2,7 +2,6 @@
 name: create-plan
 description: "Create phased implementation plans for new features or projects. Spawns an ephemeral planner agent for plan/phase creation, then validators for review. Interactive checkpoints let the user course-correct during planning."
 argument-hint: "[feature-name] [description]"
-disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Task, Skill, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion, TeamCreate, TeamDelete, SendMessage
 metadata:
   version: 2.0.0
@@ -22,11 +21,11 @@ Existing plans in the repository (avoid naming conflicts):
 
 This skill is a **thin dispatcher**. It does NOT read codebase references, extract patterns, or create phase files. The planner handles all planning work via the `planner-workflow` skill (invoked as its first action).
 
-| Role | Responsibility |
-|------|---------------|
-| **Orchestrator (you)** | Clarify requirements with user, spawn/shutdown planner + validators, relay checkpoints, route PASS/FAIL |
-| **Planner** | Plan creation: read templates, explore codebase, create plan.md + phase files, self-validate. Does NOT review its own plan. |
-| **Validator** | Independent review: runs `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
+| Role                   | Responsibility                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator (you)** | Clarify requirements with user, spawn/shutdown planner + validators, relay checkpoints, route PASS/FAIL                           |
+| **Planner**            | Plan creation: read templates, explore codebase, create plan.md + phase files, self-validate. Does NOT review its own plan.       |
+| **Validator**          | Independent review: runs `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
 
 **The planner is ephemeral.** It gets a fresh 200K context, creates the plan artifacts, and shuts down when done. This prevents context contamination and ensures skill instructions are never compacted away.
 
@@ -137,6 +136,7 @@ When the planner reports checkpoint 1 (plan.md summary with proposed phase break
 
 3. **Route the response:**
    - **If approved:** Message the planner to continue with phases
+
      ```
      SendMessage({
        type: "message",
@@ -145,7 +145,9 @@ When the planner reports checkpoint 1 (plan.md summary with proposed phase break
        summary: "Plan approved — create phases"
      })
      ```
+
    - **If changes needed:** Message the planner with specific feedback
+
      ```
      SendMessage({
        type: "message",
@@ -154,6 +156,7 @@ When the planner reports checkpoint 1 (plan.md summary with proposed phase break
        summary: "Revision requested on plan"
      })
      ```
+
    - Wait for the revised checkpoint, then repeat this step
 
 ## Step 5: User Checkpoint — Phases Complete
@@ -183,12 +186,12 @@ This invokes `/audit-plan` which writes a report to `{plan-folder}/reviews/plann
 
 **Gate logic:**
 
-| Overall Assessment | Behaviour |
-|--------------------|----------|
-| **"Unusable"** | **HARD BLOCK:** Plan is fundamentally broken. Message planner with issues, wait for restructuring, re-audit |
-| **"Major Restructuring Needed"** | **HARD BLOCK:** Message planner with issues, wait for fixes, re-audit |
-| **"Significant Issues"** | **SOFT BLOCK:** Show user, ask whether to proceed or fix |
-| **"Minor Issues"** or **"Coherent"** | **PROCEED** to Step 7 |
+| Overall Assessment                   | Behaviour                                                                                                   |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| **"Unusable"**                       | **HARD BLOCK:** Plan is fundamentally broken. Message planner with issues, wait for restructuring, re-audit |
+| **"Major Restructuring Needed"**     | **HARD BLOCK:** Message planner with issues, wait for fixes, re-audit                                       |
+| **"Significant Issues"**             | **SOFT BLOCK:** Show user, ask whether to proceed or fix                                                    |
+| **"Minor Issues"** or **"Coherent"** | **PROCEED** to Step 7                                                                                       |
 
 ## Step 7: Spawn Validators
 
@@ -295,11 +298,14 @@ Batch 2 (2 agents):
 Process each validator's result:
 
 **PASS (Ready: Yes):**
+
 - Note the template score and any minor issues
 - Continue to next batch or Step 9
 
 **FAIL (Ready: No or Critical/High issues):**
+
 1. Message the planner with the specific issues:
+
    ```
    SendMessage({
      type: "message",
@@ -308,9 +314,10 @@ Process each validator's result:
      summary: "Review feedback for {file}"
    })
    ```
-2. Wait for the planner to confirm fixes
-3. Re-spawn a validator for the fixed file
-4. Repeat until PASS
+
+1. Wait for the planner to confirm fixes
+1. Re-spawn a validator for the fixed file
+1. Repeat until PASS
 
 **Show the user review results** after each batch — template scores, codebase compliance, any issues found and fixed.
 
@@ -319,30 +326,32 @@ Process each validator's result:
 When all reviews pass and audit clears (or is skipped for small plans):
 
 1. **Shutdown the planner:**
+
    ```
    SendMessage({ type: "shutdown_request", recipient: "planner-1" })
    ```
 
-2. **Shutdown all active validators** (any still running from review batches):
+1. **Shutdown all active validators** (any still running from review batches):
+
    ```
    SendMessage({ type: "shutdown_request", recipient: "reviewer-plan" })
    SendMessage({ type: "shutdown_request", recipient: "reviewer-phase-01" })
    // ... repeat for all active reviewers
    ```
 
-3. **Delete team:** `TeamDelete()`
-
-4. **Report summary to user:**
-
+1. **Delete team:** `TeamDelete()`
+1. **Report summary to user:**
    1. **Folder location:** `plans/{YYMMDD}-{feature-name}/`
    2. **Files created:**
       - plan.md
-      - phase-01-*.md through phase-NN-*.md
+      - phase-01-_.md through phase-NN-_.md
       - reviews/planning/ folder with review files
+
    3. **Review status:**
       - Plan.md: template score (X/11)
       - Each phase: template score (X/12) + codebase score (N issues by severity)
       - Flow audit (3+ phases): overall assessment + Critical/High issue count
+
    4. **Overall verdict:** Ready/Not Ready for implementation
    5. **Critical issues** (if any) that need addressing before implementation
    6. **Context hygiene:** "Consider running `/compact` before starting `/audit-plan` or `/review-plan` to free up context space."
@@ -351,12 +360,12 @@ When all reviews pass and audit clears (or is skipped for small plans):
 
 ## Concurrency Limits
 
-| Constraint | Limit | Why |
-|-----------|-------|-----|
-| Planners | 1 | Only one plan is created at a time |
-| Validators per batch | Max 4 | Context pressure from parallel results |
+| Constraint              | Limit     | Why                                                                                   |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------- |
+| Planners                | 1         | Only one plan is created at a time                                                    |
+| Validators per batch    | Max 4     | Context pressure from parallel results                                                |
 | **Total active agents** | **Max 5** | 1 planner + 4 validators (planner may still be active during reviews for fix routing) |
-| Batch overlap | **None** | Wait for current batch to fully complete before spawning next |
+| Batch overlap           | **None**  | Wait for current batch to fully complete before spawning next                         |
 
 ---
 
@@ -371,9 +380,11 @@ If you notice context was compacted or you're unsure of current progress:
 5. Check if team exists: read `~/.claude/teams/{feature-name}-planning/config.json`
    - If team exists, teammates are still active — coordinate via messages
    - If no team, re-create it (Step 2)
+
 6. Continue from the in_progress step — don't restart from Step 1
 
 **Pattern for every work cycle:**
+
 ```
 TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
@@ -385,6 +396,7 @@ Tasks are the orchestrator's source of truth for progress — not memory, not pl
 ## Error Breakout Conditions
 
 STOP and shut down if:
+
 - Flow audit returns "Unusable" and planner cannot restructure
 - Validator FAIL repeats 3+ times on the same file
 - Planner cannot resolve Critical review issues
@@ -399,18 +411,18 @@ Do not continue when blocked. Shut down and let the user decide.
 
 The user experienced each of these failures. Understanding the harm helps you avoid them:
 
-| Pattern to Avoid | Harm When Ignored |
-|------------------|-------------------|
-| Skipping requirements clarification | Wrong plan built on false premises, hours of wasted effort |
-| Spawning planner without user checkpoint | User discovers wrong assumptions after all phases are written |
-| Writing code blocks without reading codebase | Phases contain wrong patterns, caught late during implementation |
-| Large multi-concern phases | Phases exceed context window, work gets lost mid-implementation |
-| Self-reviewing the plan | Blind spots missed; `/review-plan` catches template AND codebase deviations |
-| Vague delegation prompts | Validators misinterpret and skip skill invocation |
-| Folder without date prefix | Folders become unsorted chronologically |
-| Skipping TaskList check | Duplicates tasks if resuming after context compact |
-| Too many concurrent validators | Context window blowout from result flooding |
-| Running reviews before flow audit | Structural issues invalidate all review work — hours wasted on phases that need restructuring |
+| Pattern to Avoid                             | Harm When Ignored                                                                             |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Skipping requirements clarification          | Wrong plan built on false premises, hours of wasted effort                                    |
+| Spawning planner without user checkpoint     | User discovers wrong assumptions after all phases are written                                 |
+| Writing code blocks without reading codebase | Phases contain wrong patterns, caught late during implementation                              |
+| Large multi-concern phases                   | Phases exceed context window, work gets lost mid-implementation                               |
+| Self-reviewing the plan                      | Blind spots missed; `/review-plan` catches template AND codebase deviations                   |
+| Vague delegation prompts                     | Validators misinterpret and skip skill invocation                                             |
+| Folder without date prefix                   | Folders become unsorted chronologically                                                       |
+| Skipping TaskList check                      | Duplicates tasks if resuming after context compact                                            |
+| Too many concurrent validators               | Context window blowout from result flooding                                                   |
+| Running reviews before flow audit            | Structural issues invalidate all review work — hours wasted on phases that need restructuring |
 
 ## Template Locations
 

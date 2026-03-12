@@ -20,10 +20,58 @@
     "reason": "rm -rf on an unrecognized path can permanently destroy source code, configuration, or user data that cannot be recovered. Use a more targeted approach or verify the path is safe."
   },
   {
-    "pattern": "git\\s+push\\s+.*--force(?!-with-lease)",
+    "pattern": "\\bgit\\s+push\\s+.*--force(?!-with-lease)",
     "safe_patterns": [],
     "action": "deny",
-    "reason": "Force push overwrites remote history — other developers' commits and in-progress work could be permanently lost. Use --force-with-lease instead, which refuses to push if someone else has pushed since your last fetch."
+    "reason": "Force push overwrites remote history — other developers' commits and in-progress work could be permanently lost. Use --force-with-lease instead."
+  },
+  {
+    "pattern": "\\bgit\\s+stash\\b",
+    "safe_patterns": ["stash\\s+list", "stash\\s+show"],
+    "action": "deny",
+    "reason": "git stash manipulates the working tree and can discard uncommitted changes. Agents must never stash — work with the dirty tree as-is."
+  },
+  {
+    "pattern": "\\bgit\\s+checkout\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git checkout can discard uncommitted working tree changes or switch branches unexpectedly. Agents must never use git checkout."
+  },
+  {
+    "pattern": "\\bgit\\s+reset\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git reset can discard commits and working tree changes. Agents must never use git reset."
+  },
+  {
+    "pattern": "\\bgit\\s+restore\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git restore can discard uncommitted working tree changes. Agents must never use git restore."
+  },
+  {
+    "pattern": "\\bgit\\s+clean\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git clean deletes untracked files permanently. Agents must never use git clean."
+  },
+  {
+    "pattern": "\\bgit\\s+merge\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git merge can create merge commits or conflicts. Agents must never merge."
+  },
+  {
+    "pattern": "\\bgit\\s+rebase\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git rebase rewrites history. Agents must never rebase."
+  },
+  {
+    "pattern": "\\bgit\\s+branch\\s+-[dD]\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Deleting branches can lose work. Agents must never delete branches."
   },
   {
     "pattern": "drop\\s+table",
@@ -35,7 +83,7 @@
     "pattern": "drop\\s+database",
     "safe_patterns": [],
     "action": "deny",
-    "reason": "DROP DATABASE destroys the entire database including all tables, data, functions, and policies. This is never the right approach — use supabase:web:reset for a controlled database rebuild instead."
+    "reason": "DROP DATABASE destroys the entire database including all tables, data, functions, and policies. This is never the right approach — ask the user to handle database resets manually."
   },
   {
     "pattern": "truncate\\s+",
@@ -44,11 +92,177 @@
     "reason": "TRUNCATE removes all rows from the table instantly with no transaction log for recovery. Unlike DELETE, it cannot be rolled back in most contexts. Confirm this is intentional and that the data is expendable."
   },
   {
-    "pattern": "git\\s+stash\\b",
-    "safe_patterns": [
-      "git\\s+stash\\s+(list|show)"
-    ],
+    "pattern": "drop\\s+policy",
+    "safe_patterns": [],
     "action": "ask",
-    "reason": "git stash silently hides uncommitted work from the working tree, making it invisible to subsequent steps. An agent stashing or popping changes can corrupt in-progress work or create hard-to-diagnose merge conflicts. Use a commit or a separate branch instead."
+    "reason": "Dropping an RLS policy silently exposes tenant data to all authenticated users. The table remains but loses access control — this is a critical security risk."
+  },
+  {
+    "pattern": "drop\\s+function",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Dropping a database function breaks server actions and RPCs that depend on it. Confirm the function is unused before removing."
+  },
+  {
+    "pattern": "drop\\s+trigger",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Dropping a trigger removes business rule enforcement (permission validation, auto-seeding, audit logging). Confirm the trigger is no longer needed."
+  },
+  {
+    "pattern": "drop\\s+schema",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "DROP SCHEMA destroys an entire schema and all its objects (tables, functions, policies, triggers). This is never the right approach."
+  },
+  {
+    "pattern": "drop\\s+type",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Dropping an enum type breaks all tables and queries that reference it. Confirm nothing depends on this type before removing."
+  },
+  {
+    "pattern": "alter\\s+table.*drop\\s+column",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Dropping a column permanently destroys all data stored in it with no recovery. Confirm the column is unused and data has been migrated if needed."
+  },
+  {
+    "pattern": "delete\\s+from",
+    "safe_patterns": ["where", "WHERE"],
+    "action": "ask",
+    "reason": "DELETE FROM without a WHERE clause deletes ALL rows in the table. Add a WHERE clause to target specific rows, or confirm this bulk delete is intentional."
+  },
+  {
+    "pattern": "\\bsupabase\\s+db\\s+reset\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "supabase db reset destroys the entire database and all data. Agents must never reset databases — ask the user to do it manually if truly needed."
+  },
+  {
+    "pattern": "\\bsupabase:(web:)?reset\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "This pnpm script wraps docker compose down -v or supabase db reset, which permanently destroys all database data and volumes. Agents must never run reset scripts — ask the user to do it manually if truly needed."
+  },
+  {
+    "pattern": "\\bsupabase:migrate:reset\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "This pnpm script resets the database via migration scripts, destroying all data. Agents must never run reset scripts — ask the user to do it manually if truly needed."
+  },
+  {
+    "pattern": "\\bdocker\\s+volume\\s+(rm|remove|prune)\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Docker volume removal permanently destroys database data, TLS certificates, and other persistent state with NO recovery path. Never remove volumes — ask the user to do it manually if truly needed."
+  },
+  {
+    "pattern": "\\bdocker\\s+system\\s+prune\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Docker system prune can destroy volumes and container state. Never run this — ask the user to do it manually if truly needed."
+  },
+  {
+    "pattern": "\\bdocker\\s+compose\\s+down\\s+.*-v\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "The -v flag on docker compose down removes ALL named volumes, permanently destroying database data. Use 'docker compose down' without -v instead."
+  },
+  {
+    "pattern": "\\bdocker\\s+compose\\s+down\\s+.*--volumes\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "The --volumes flag on docker compose down removes ALL named volumes, permanently destroying database data. Use 'docker compose down' without --volumes instead."
+  },
+  {
+    "pattern": "\\bcrontab\\s+-r\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "crontab -r deletes ALL cron jobs instantly with no confirmation or recovery. This would destroy backup schedules and health watchdogs. Use crontab -e to edit specific entries."
+  },
+  {
+    "pattern": "\\bcurl\\b.*\\|\\s*(bash|sh|zsh)",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Piping a URL to a shell executes arbitrary remote code. Never install software this way — use package managers or download and inspect scripts first."
+  },
+  {
+    "pattern": "\\bwget\\b.*\\|\\s*(bash|sh|zsh)",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Piping a URL to a shell executes arbitrary remote code. Never install software this way — use package managers or download and inspect scripts first."
+  },
+  {
+    "pattern": "\\bdropdb\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "dropdb is PostgreSQL's command-line tool to destroy an entire database. This bypasses SQL-level pattern matching. Agents must never drop databases."
+  },
+  {
+    "pattern": "\\bsupabase\\s+db\\s+push\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "supabase db push applies local migrations to a REMOTE database. This can destructively modify production data. Agents must never push to remote databases — ask the user to do it manually."
+  },
+  {
+    "pattern": "\\bgit\\s+add\\s+(-A|\\.)\\s*$",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git add -A and git add . stage EVERYTHING including .env files, credentials, backups, and secrets. Always stage specific files by name instead."
+  },
+  {
+    "pattern": "\\bgit\\s+add\\s+--all\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "git add --all stages EVERYTHING including .env files, credentials, backups, and secrets. Always stage specific files by name instead."
+  },
+  {
+    "pattern": "\\bdocker\\s+container\\s+prune\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Removes all stopped containers, which may hold important state or logs. Ask the user to clean up containers manually."
+  },
+  {
+    "pattern": "\\bsystemctl\\s+(stop|disable|mask)\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Stopping or disabling system services can break Alfred, Docker, or other critical infrastructure. Agents must never manage system services."
+  },
+  {
+    "pattern": "\\b(npm|pnpm|yarn)\\s+publish\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Publishing packages to a public registry is irreversible and visible to the world. Agents must never publish — ask the user to do it manually."
+  },
+  {
+    "pattern": "\\bssh-keygen\\b",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Generating or overwriting SSH keys can break access to remote servers and git hosting. Agents must never manage SSH keys."
+  },
+  {
+    "pattern": "\\b(chmod|chown)\\s+(-[a-zA-Z]*R|-[a-zA-Z]*r)",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Recursive permission changes can break file access across the entire repository or system directories."
+  },
+  {
+    "pattern": "\\b(killall|pkill)\\b",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Killing processes by name could terminate dev services, Supabase containers, or other critical processes. Confirm the target process."
+  },
+  {
+    "pattern": "\\bmv\\s+.*(/Projects/|~/Projects/|\\.claude/)",
+    "safe_patterns": [],
+    "action": "ask",
+    "reason": "Moving project directories or Claude config can effectively delete critical infrastructure. Confirm the source and destination paths."
+  },
+  {
+    "pattern": ">(\\s*/etc/|\\s*~/\\.ssh/|\\s*~/\\.claude/)",
+    "safe_patterns": [],
+    "action": "deny",
+    "reason": "Redirecting output to system config, SSH, or Claude config files can overwrite critical configuration with no recovery."
   }
 ]

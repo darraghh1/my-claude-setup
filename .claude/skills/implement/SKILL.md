@@ -2,7 +2,6 @@
 name: implement
 description: "Execute phases from a plan using group-based processing. Builds phases in parallel within groups, audits each group after completion, and auto-fixes Medium/Low issues while escalating High/Critical to the user."
 argument-hint: "[plan-folder]"
-disable-model-invocation: true
 metadata:
   version: 4.0.0
 ---
@@ -15,12 +14,12 @@ Implement phases from: **$ARGUMENTS/plan.md**
 
 This skill is a **thin dispatcher**. It does NOT read references, extract patterns, or implement code. Builders handle implementation, validators handle review, and auditors handle cross-phase analysis.
 
-| Role | Responsibility |
-|------|---------------|
-| **Orchestrator (you)** | Parse groups, gate checks, spawn/shutdown agents, route verdicts, triage auditor findings, track cross-group state |
-| **Builder** | Phase implementation: read phase, find references, invoke skills, code, test, typecheck. Does NOT review its own code. |
-| **Validator** | Independent review: runs `/code-review` (reference-grounded, with auto-fix), then typecheck + tests. Reports PASS/FAIL. |
-| **Auditor** | Group-level audit: cross-phase regressions, deferred items, plan drift, system integrity. Read-only — reports findings with severity ratings. |
+| Role                   | Responsibility                                                                                                                                |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator (you)** | Parse groups, gate checks, spawn/shutdown agents, route verdicts, triage auditor findings, track cross-group state                            |
+| **Builder**            | Phase implementation: read phase, find references, invoke skills, code, test, typecheck. Does NOT review its own code.                        |
+| **Validator**          | Independent review: runs `/code-review` (reference-grounded, with auto-fix), then typecheck + tests. Reports PASS/FAIL.                       |
+| **Auditor**            | Group-level audit: cross-phase regressions, deferred items, plan drift, system integrity. Read-only — reports findings with severity ratings. |
 
 **All agents are ephemeral.** Each gets a fresh 200K context and is shut down after its cycle. This prevents context contamination, ensures skill instructions are never compacted, and eliminates bottlenecks.
 
@@ -65,18 +64,19 @@ for each group (sequential):
 
 **5. Gate logic:**
 
-| Overall Assessment | Behaviour |
-|--------------------|----------|
-| **"Unusable"** | **HARD BLOCK:** STOP. Plan is fundamentally broken — needs restructuring. |
-| **"Major Restructuring Needed"** | **HARD BLOCK:** STOP. Report issues to user. |
-| **"Significant Issues"** | **SOFT BLOCK:** WARN user. Ask whether to proceed or fix. |
-| **"Minor Issues"** or **"Coherent"** | **PROCEED.** |
+| Overall Assessment                   | Behaviour                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| **"Unusable"**                       | **HARD BLOCK:** STOP. Plan is fundamentally broken — needs restructuring. |
+| **"Major Restructuring Needed"**     | **HARD BLOCK:** STOP. Report issues to user.                              |
+| **"Significant Issues"**             | **SOFT BLOCK:** WARN user. Ask whether to proceed or fix.                 |
+| **"Minor Issues"** or **"Coherent"** | **PROCEED.**                                                              |
 
 ## Step 3: Parse Groups and Build Execution Plan
 
 **3a: Check for existing tasks (compact recovery):**
 
 Run `TaskList` first. If tasks already exist from a previous session or context compact:
+
 1. Read existing tasks with `TaskGet` for each task ID
 2. If any task is `in_progress` — resume from that point
 3. Do NOT recreate the task list
@@ -100,6 +100,7 @@ groups = [
 Groups are processed sequentially in the order listed in the Group Summary. Phases within a group are processed in parallel where dependencies allow.
 
 If all phases are done:
+
 1. Report completion to the user
 2. Skip to Step 10 (cleanup)
 
@@ -206,13 +207,13 @@ TeamCreate({
 
 **Hard cap: 4 total active agents (builders + validators + auditor combined).** The auditor runs alone — no builders or validators during audit.
 
-| Constraint | Limit | Why |
-|-----------|-------|-----|
-| Builders per batch | Max 2 | Context pressure from parallel completions |
-| Validators per batch | Max 2 (one per active builder) | Each builder gets one validator |
-| **Total active agents** | **Max 4** | Orchestrator context budget |
-| Auditor | **Runs alone** | Needs undivided orchestrator attention for triage |
-| Batch overlap | **None** | Wait for current batch to fully complete before next |
+| Constraint              | Limit                          | Why                                                  |
+| ----------------------- | ------------------------------ | ---------------------------------------------------- |
+| Builders per batch      | Max 2                          | Context pressure from parallel completions           |
+| Validators per batch    | Max 2 (one per active builder) | Each builder gets one validator                      |
+| **Total active agents** | **Max 4**                      | Orchestrator context budget                          |
+| Auditor                 | **Runs alone**                 | Needs undivided orchestrator attention for triage    |
+| Batch overlap           | **None**                       | Wait for current batch to fully complete before next |
 
 ## Step 6: Spawn Builders
 
@@ -265,6 +266,7 @@ git merge --no-ff {worktree-branch} -m "merge: phase {NN} - {title}"
 ```
 
 If the merge has conflicts:
+
 1. Attempt auto-resolution for trivial conflicts (import ordering, formatting)
 2. If non-trivial conflicts exist, **STOP** and report to the user — manual resolution needed
 
@@ -298,6 +300,7 @@ Create [Review] tasks with metadata (agent_type: "validator", phase, group, pare
 ### Handle Verdict
 
 **PASS:**
+
 1. Update phase YAML frontmatter: `status: done`
 2. Update Phase Table in plan.md: status → "Done"
 3. Mark the phase task as completed
@@ -307,13 +310,16 @@ Create [Review] tasks with metadata (agent_type: "validator", phase, group, pare
    - **No** → loop back to find next unblocked phases in this group, spawn next batch
 
 **FAIL:**
+
 1. Revert the worktree merge to restore a clean main branch:
+
    ```bash
    git revert --no-edit HEAD
    ```
-2. Shutdown current builder AND validator (both contexts may be stale)
-3. Spawn a **fresh builder** (with `isolation: "worktree"`) with the validator's fix instructions
-4. Wait for fix builder → merge branch → spawn fresh validator → re-validate → repeat until PASS
+
+1. Shutdown current builder AND validator (both contexts may be stale)
+1. Spawn a **fresh builder** (with `isolation: "worktree"`) with the validator's fix instructions
+1. Wait for fix builder → merge branch → spawn fresh validator → re-validate → repeat until PASS
 
 ## Step 8: Group Audit
 
@@ -391,11 +397,11 @@ Suggested fix: {fix from auditor report}`,
 
 **9b: Triage by severity:**
 
-| Finding Severity | Action |
-|-----------------|--------|
-| **No issues / Low only** | Log deviation summary, mark audit task complete, continue to next group |
-| **Medium** | Auto-spawn builder to fix + validator to verify. No user input needed. |
-| **High / Critical** | **Checkpoint with user.** Present the findings and ask for direction before proceeding. |
+| Finding Severity         | Action                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| **No issues / Low only** | Log deviation summary, mark audit task complete, continue to next group                 |
+| **Medium**               | Auto-spawn builder to fix + validator to verify. No user input needed.                  |
+| **High / Critical**      | **Checkpoint with user.** Present the findings and ask for direction before proceeding. |
 
 **9c: For Medium findings — auto-fix cycle:**
 
@@ -471,7 +477,6 @@ SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 ```
 
 2. **Delete team:** `TeamDelete()`
-
 3. **Report final summary to user:**
 
 ```
@@ -495,6 +500,7 @@ SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 ```
 
 **Error breakout conditions** — STOP and shut down if:
+
 - Validator FAIL repeats 3+ times on the same phase
 - Auditor finding fix fails 3+ times
 - Phase has Critical blocking issues from plan review
@@ -516,9 +522,11 @@ If you notice context was compacted:
 8. Check if team exists: read `~/.claude/teams/{plan-name}-impl/config.json`
    - If team exists, teammates may still be active — coordinate via messages
    - If no team, re-create it
+
 9. Continue from the in_progress task
 
 **Pattern for every work cycle:**
+
 ```
 TaskList → filter by metadata.agent_type === "orchestrator" → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```

@@ -2,7 +2,6 @@
 name: audit-plan
 description: "Structural audit of implementation plans — dependencies, data flow, ordering, stale artifacts. Runs BEFORE per-phase reviews to catch design-level issues early. Bails on fundamentally broken plans."
 argument-hint: "[plan-folder]"
-disable-model-invocation: true
 context: fork
 agent: general-purpose
 model: sonnet
@@ -37,6 +36,7 @@ This skill performs a **structural flow audit** of a multi-phase implementation 
 Tasks survive context compacts — skipping this check causes lost progress and repeated work.
 
 Before starting work, run `TaskList` to check if tasks already exist from a previous session or before a compact. If tasks exist:
+
 1. Read existing tasks with `TaskGet` for each task ID
 2. Find the first task with status `pending` or `in_progress`
 3. Resume from that task — do NOT recreate the task list
@@ -44,6 +44,7 @@ Before starting work, run `TaskList` to check if tasks already exist from a prev
 If no tasks exist, create them after reading the master plan (Step 1):
 
 **Example task list:**
+
 ```
 Task 1: Read the master plan
 Task 2: Read all phase files and extract metadata
@@ -64,13 +65,13 @@ Mark each task `in_progress` when starting and `completed` when done.
 
 **This runs FIRST** (before `/review-plan`) because structural issues invalidate all per-phase review work. No point polishing Phase 5's code blocks if Phase 5 depends on a table that Phase 3 doesn't actually create.
 
-| Problem | How It Manifests | Cost If Missed |
-|---------|-----------------|----------------|
-| Circular dependencies | Phase A waits for B, B waits for A — deadlock | Implementation stalls, requires plan restructuring |
-| Missing dependencies | Phase 5 uses a table from Phase 3 but doesn't declare it | Phase 5 fails at runtime, debugging time wasted |
-| Wrong ordering | Consumer phase runs before its data producer | Code compiles but crashes, phase must be re-sequenced |
-| Stale artifacts | plan.md says "Done" but phase file says "Pending" | `/implement` picks the wrong next phase |
-| Incoherent data flow | Phases disagree on table names, patterns, or sources | Every downstream phase builds on wrong assumptions |
+| Problem               | How It Manifests                                         | Cost If Missed                                        |
+| --------------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| Circular dependencies | Phase A waits for B, B waits for A — deadlock            | Implementation stalls, requires plan restructuring    |
+| Missing dependencies  | Phase 5 uses a table from Phase 3 but doesn't declare it | Phase 5 fails at runtime, debugging time wasted       |
+| Wrong ordering        | Consumer phase runs before its data producer             | Code compiles but crashes, phase must be re-sequenced |
+| Stale artifacts       | plan.md says "Done" but phase file says "Pending"        | `/implement` picks the wrong next phase               |
+| Incoherent data flow  | Phases disagree on table names, patterns, or sources     | Every downstream phase builds on wrong assumptions    |
 
 The audit report feeds into `/implement` — it checks the flow audit verdict before building. A structural audit catches design problems that per-phase reviews cannot see.
 
@@ -81,6 +82,7 @@ The flow audit report goes in the `reviews/planning/` subfolder alongside per-ph
 **Write to:** `{plan-folder}/reviews/planning/flow-audit.md`
 
 Examples:
+
 - `plans/250202-voice-assistant/reviews/planning/flow-audit.md`
 - `plans/250202-api-refactor/reviews/planning/flow-audit.md`
 
@@ -107,15 +109,15 @@ Use Glob to find all phase files: `{plan-folder}/phase-*.md`
 
 For EACH phase file, extract from the frontmatter and overview:
 
-| Field | Where to Find |
-|-------|---------------|
-| Phase number | Filename `phase-NN-*` |
-| Title | Frontmatter `title:` |
-| Status | Frontmatter `status:` |
-| Dependencies | Frontmatter `dependencies:` |
-| What it produces | Overview section |
-| What it consumes | "How This Phase Fits" or "Prerequisites" sections |
-| Key files it targets | Implementation steps (file paths mentioned) |
+| Field                | Where to Find                                     |
+| -------------------- | ------------------------------------------------- |
+| Phase number         | Filename `phase-NN-*`                             |
+| Title                | Frontmatter `title:`                              |
+| Status               | Frontmatter `status:`                             |
+| Dependencies         | Frontmatter `dependencies:`                       |
+| What it produces     | Overview section                                  |
+| What it consumes     | "How This Phase Fits" or "Prerequisites" sections |
+| Key files it targets | Implementation steps (file paths mentioned)       |
 
 Build a mental model of the full dependency graph as you read.
 
@@ -135,32 +137,34 @@ echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validat
 From the data collected in Step 2, construct the full dependency graph.
 
 **For each phase, document:**
+
 - Declared dependencies (from frontmatter `dependencies:` field)
 - Implicit dependencies (phase references data/files/services created by another phase but doesn't declare it)
 - What downstream phases depend on it
 
 **Check for:**
 
-| Issue Type | How to Detect |
-|------------|---------------|
-| Circular dependencies | Phase A depends on B, B depends on A (directly or transitively) |
-| Missing dependencies | Phase X uses output from Phase Y but doesn't list Y in dependencies |
-| Unnecessary dependencies | Phase X lists Phase Y but doesn't actually use any of Y's output |
-| Orphaned phases | Phase exists but no other phase depends on it AND it doesn't depend on anything |
-| Dependency on deprecated phase | A phase depends on a phase marked `status: deprecated` |
+| Issue Type                     | How to Detect                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| Circular dependencies          | Phase A depends on B, B depends on A (directly or transitively)                 |
+| Missing dependencies           | Phase X uses output from Phase Y but doesn't list Y in dependencies             |
+| Unnecessary dependencies       | Phase X lists Phase Y but doesn't actually use any of Y's output                |
+| Orphaned phases                | Phase exists but no other phase depends on it AND it doesn't depend on anything |
+| Dependency on deprecated phase | A phase depends on a phase marked `status: deprecated`                          |
 
 ### Bail-Out Assessment
 
 After building the dependency graph, evaluate whether the plan is **fundamentally broken**. If ANY of these conditions are true, **STOP the audit immediately** — write a short report with assessment "Unusable" and return:
 
-| Bail-Out Condition | Why It's Fatal |
-|--------------------|---------------|
-| Circular dependencies exist | Cannot be resolved by review — requires plan restructuring |
-| >50% of phases have missing/wrong dependencies | Dependency graph is unreliable — plan needs redesign |
-| No coherent execution order exists | Phases cannot be sequenced — plan is incoherent |
-| Plan has no discernible architecture | Phases are disconnected fragments, not a pipeline |
+| Bail-Out Condition                             | Why It's Fatal                                             |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| Circular dependencies exist                    | Cannot be resolved by review — requires plan restructuring |
+| >50% of phases have missing/wrong dependencies | Dependency graph is unreliable — plan needs redesign       |
+| No coherent execution order exists             | Phases cannot be sequenced — plan is incoherent            |
+| Plan has no discernible architecture           | Phases are disconnected fragments, not a pipeline          |
 
 **If the plan is bail-out level broken:** Skip Steps 4-7. Write a minimal report (Step 8) with:
+
 - Overall Assessment: **Unusable — Needs Restructuring**
 - The specific bail-out condition(s) detected
 - A brief recommendation for what needs to change
@@ -192,6 +196,7 @@ Assess whether the current phase sequence makes logical sense:
 5. **Cleanup last** — Are deprecation, migration, and drop phases at the end?
 
 **Flag ordering issues like:**
+
 - A consumer phase runs before its data producer
 - A centralized service is created AFTER the things that should use it
 - Tests are written before the code they test exists
@@ -201,26 +206,26 @@ Assess whether the current phase sequence makes logical sense:
 
 Check for:
 
-| Artifact | How to Find |
-|----------|-------------|
-| Deprecated phase files | `status: deprecated` in frontmatter but file still exists |
-| Duplicate phase numbers | Multiple files with same `phase-NN-` prefix |
-| Broken inter-phase links | `[[phase-XX]]` or `[Phase XX](./phase-XX-*)` links that point to non-existent files |
-| Renumbered but not updated | Phase file title says "Phase 17" but filename says `phase-18-*` |
-| Phase table mismatches | plan.md phase table lists a phase title/file that doesn't match the actual file |
-| Stale status | plan.md says "Done" but phase file says "Pending" (or vice versa) |
+| Artifact                   | How to Find                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| Deprecated phase files     | `status: deprecated` in frontmatter but file still exists                           |
+| Duplicate phase numbers    | Multiple files with same `phase-NN-` prefix                                         |
+| Broken inter-phase links   | `[[phase-XX]]` or `[Phase XX](./phase-XX-*)` links that point to non-existent files |
+| Renumbered but not updated | Phase file title says "Phase 17" but filename says `phase-18-*`                     |
+| Phase table mismatches     | plan.md phase table lists a phase title/file that doesn't match the actual file     |
+| Stale status               | plan.md says "Done" but phase file says "Pending" (or vice versa)                   |
 
 ## Step 7: Assess Risk for Pending Phases
 
 For each pending phase, evaluate risk based on:
 
-| Risk Factor | High Risk | Low Risk |
-|-------------|-----------|----------|
-| Dependencies | Depends on phases with known issues | Dependencies are clean and verified |
-| File targets | References files that don't exist or are uncertain | Targets well-known, stable files |
-| Scope | Touches many files across many directories | Focused on 1-2 files |
-| Pattern clarity | Introduces new patterns not seen in codebase | Follows established patterns from earlier phases or codebase |
-| Blocking | Many downstream phases depend on it | Few or no downstream dependencies |
+| Risk Factor     | High Risk                                          | Low Risk                                                     |
+| --------------- | -------------------------------------------------- | ------------------------------------------------------------ |
+| Dependencies    | Depends on phases with known issues                | Dependencies are clean and verified                          |
+| File targets    | References files that don't exist or are uncertain | Targets well-known, stable files                             |
+| Scope           | Touches many files across many directories         | Focused on 1-2 files                                         |
+| Pattern clarity | Introduces new patterns not seen in codebase       | Follows established patterns from earlier phases or codebase |
+| Blocking        | Many downstream phases depend on it                | Few or no downstream dependencies                            |
 
 ## Step 8: Write Audit Report
 
@@ -247,9 +252,9 @@ Create the `reviews/planning/` directory if it doesn't exist.
 
 ### Dependency Issues
 
-| # | Issue | Phases Affected | Severity | Suggested Fix |
-|---|-------|----------------|----------|---------------|
-| 1 | ... | P05, P12 | High | ... |
+| #   | Issue | Phases Affected | Severity | Suggested Fix |
+| --- | ----- | --------------- | -------- | ------------- |
+| 1   | ...   | P05, P12        | High     | ...           |
 
 ---
 
@@ -261,39 +266,40 @@ Create the `reviews/planning/` directory if it doesn't exist.
 
 ### Inconsistencies
 
-| # | Issue | Phases Affected | Details |
-|---|-------|----------------|---------|
-| 1 | ... | ... | ... |
+| #   | Issue | Phases Affected | Details |
+| --- | ----- | --------------- | ------- |
+| 1   | ...   | ...             | ...     |
 
 ---
 
 ## 3. Phase Ordering Assessment
 
 ### Current Order
+
 {List phases in order with one-line description}
 
 ### Ordering Issues
 
-| # | Issue | Current Order | Suggested Order | Rationale |
-|---|-------|--------------|-----------------|-----------|
-| 1 | ... | P12 after P11 | P12 before P11 | Loader should exist before orchestrator uses it |
+| #   | Issue | Current Order | Suggested Order | Rationale                                       |
+| --- | ----- | ------------- | --------------- | ----------------------------------------------- |
+| 1   | ...   | P12 after P11 | P12 before P11  | Loader should exist before orchestrator uses it |
 
 ---
 
 ## 4. Stale Artifacts
 
-| # | Artifact | Type | Location | Action Needed |
-|---|----------|------|----------|---------------|
-| 1 | ... | Deprecated file | phase-17-unit-tests-update.md | Delete or archive |
+| #   | Artifact | Type            | Location                      | Action Needed     |
+| --- | -------- | --------------- | ----------------------------- | ----------------- |
+| 1   | ...      | Deprecated file | phase-17-unit-tests-update.md | Delete or archive |
 
 ---
 
 ## 5. Risk Assessment (Pending Phases)
 
-| Phase | Risk | Key Risk Factors | Recommendation |
-|-------|------|-----------------|----------------|
-| P12 | High | Depends on P11 which may have ordering issues | Review dependency direction |
-| P14 | Medium | Modifies Edge Function with complex existing logic | Read function before implementing |
+| Phase | Risk   | Key Risk Factors                                   | Recommendation                    |
+| ----- | ------ | -------------------------------------------------- | --------------------------------- |
+| P12   | High   | Depends on P11 which may have ordering issues      | Review dependency direction       |
+| P14   | Medium | Modifies Edge Function with complex existing logic | Read function before implementing |
 
 ---
 
@@ -330,6 +336,7 @@ If you notice context was compacted or you're unsure of current progress:
 Tasks persist across compacts. The task list is your source of truth for progress, not your memory.
 
 **Pattern for every work session:**
+
 ```
 TaskList → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
 ```
