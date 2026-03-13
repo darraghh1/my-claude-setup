@@ -57,9 +57,9 @@
   },
   {
     "pattern": "\\bgit\\s+merge\\b",
-    "safe_patterns": [],
+    "safe_patterns": ["--no-ff\\s+builder-", "--no-ff\\s+worktree"],
     "action": "deny",
-    "reason": "git merge can create merge commits or conflicts. Agents must never merge."
+    "reason": "git merge can create merge commits or conflicts. Agents must never merge unless merging builder worktree branches via --no-ff."
   },
   {
     "pattern": "\\bgit\\s+rebase\\b",
