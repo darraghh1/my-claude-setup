@@ -318,7 +318,7 @@ Optional:
 │       ├── builder.md              # Focused implementation agent
 │       ├── planner.md              # Ephemeral planning agent
 │       └── validator.md            # Task verification and auto-fix agent
-├── hooks/                          # 11 Python hook scripts
+├── hooks/                          # 14 Python hook scripts
 │   ├── config/
 │   │   └── blocked-commands.json   # Dangerous command patterns to block
 │   ├── notification.py             # Sound alerts for user-action-needed events
@@ -326,9 +326,12 @@ Optional:
 │   ├── post_tool_use_failure.py    # Actionable guidance after tool failures
 │   ├── pre_compact.py              # Transcript backup before context compaction
 │   ├── pre_tool_use.py             # Blocks dangerous commands, logs tool calls
-│   ├── session_end.py              # Logs session end reason
+│   ├── session_end.py              # Logs session end + kills orphaned MCP processes
 │   ├── session_start.py            # Injects git context, runs log cleanup + MCP health checks
 │   ├── stop.py                     # Transcript export + completion sound
+│   ├── stop_task_check.py          # Catches orphaned in_progress tasks at turn end
+│   ├── task_completed.py           # Verification gate on task completion (deduped)
+│   ├── teammate_idle.py            # Logs teammate idle events
 │   ├── user_prompt_submit.py       # Logs prompts, stores for status display
 │   ├── logs/                       # JSONL append-only logs (gitignored, grep-able across sessions)
 │   ├── utils/
@@ -423,10 +426,14 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **PostToolUseFailure** | `post_tool_use_failure.py` | After a tool call fails    | Pattern-matches error messages and injects actionable guidance (e.g., "Read file before Edit", "Don't retry denied commands").                                    |
 | **Notification**       | `notification.py`          | When Claude needs input    | Plays a sound for permission prompts and elicitation dialogs. Ignores idle/auth events.                                                                           |
 | **Stop**               | `stop.py`                  | When Claude stops          | Exports JSONL transcript to `chat.json`. Plays completion sound. JSONL logging.                                                                                   |
+| **Stop**               | `stop_task_check.py`       | When Claude stops          | Catches orphaned `in_progress` tasks via marker file handshake with `task_completed.py`. Injects systemMessage reminder to close them out.                        |
 | **PreCompact**         | `pre_compact.py`           | Before context compaction  | Logs compaction events. Optionally backs up the transcript before compression.                                                                                    |
 | **UserPromptSubmit**   | `user_prompt_submit.py`    | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display.                                                                                      |
 | **SessionStart**       | `session_start.py`         | When a session begins      | Injects git branch/status into context. Runs log cleanup (rotates JSONL at 5MB, prunes sessions >30 days). Checks MCP server binary availability.                |
-| **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason and timestamp. Sound notification handled by Stop hook.                                                                                   |
+| **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason. Kills orphaned MCP processes (draw.io, Playwright) that leak after session exit. Bounds log at 100 entries.                              |
+| **TaskCompleted**      | `task_completed.py`        | When a task is completed   | Verification gate — blocks first completion attempt with role-specific reminder, allows retry. Writes marker file for `stop_task_check.py`. Deduped with 5-min TTL. |
+| **TeammateIdle**       | `teammate_idle.py`         | When a teammate goes idle  | Logs teammate idle events for debugging agent lifecycle issues.                                                                                                    |
+| **InstructionsLoaded** | `instructions_loaded.py`   | When CLAUDE.md/rules load  | Logs which rules and instructions load per session. Useful for verifying teammate rule loading.                                                                    |
 
 ### TypeScript Quality Checks
 
