@@ -4,57 +4,28 @@
 # dependencies = []
 # ///
 
-"""SessionEnd hook — logs session end and cleans up orphaned MCP processes.
+"""SessionEnd hook — logs session end and cleans up MCP server processes.
 
 Runs when a Claude Code session ends. Records the end event and kills
-MCP server processes that are known to leak (e.g., draw.io spawns headless
-browsers that survive session exit and accumulate until OOM).
+MCP server processes owned by THIS session only. Other sessions' MCP
+servers are untouched.
+
+MCP server patterns are discovered dynamically from config files
+(~/.claude.json, settings.json, settings.local.json, .mcp.json) rather
+than hardcoded, so cleanup works for any project's MCP configuration.
+
+Uses process-tree ancestry to identify ownership: only kills MCP
+processes that are descendants of the current Claude process.
 
 Notification is handled by stop.py to avoid double-dinging.
 """
 
 import json
-import subprocess
 import sys
 from datetime import datetime
 
 from utils.constants import LOG_DIR
-
-# MCP processes known to leak after session exit.
-# Each entry is a pattern matched against the full command line (pkill -f).
-# Only add processes here that are confirmed to orphan — don't blanket-kill
-# lightweight stdio MCP servers that clean up properly on stdin close.
-LEAKY_MCP_PATTERNS = [
-    "next-ai-drawio-mcp",  # Spawns HTTP server + opens browser per session
-    "playwright-mcp",      # Spawns headless Chromium that survives session exit
-]
-
-
-def cleanup_orphaned_mcp():
-    """Kill MCP server processes that are known to outlive their sessions.
-
-    Returns a list of (pattern, kill_count) tuples for logging.
-    """
-    results = []
-    for pattern in LEAKY_MCP_PATTERNS:
-        try:
-            # Count matching processes first
-            count_result = subprocess.run(
-                ["pgrep", "-fc", pattern],
-                capture_output=True, text=True, timeout=5,
-            )
-            count = int(count_result.stdout.strip()) if count_result.returncode == 0 else 0
-
-            if count > 0:
-                # SIGTERM first for graceful shutdown
-                subprocess.run(
-                    ["pkill", "-f", pattern],
-                    capture_output=True, timeout=5,
-                )
-                results.append((pattern, count))
-        except (subprocess.TimeoutExpired, ValueError, OSError):
-            pass
-    return results
+from utils.mcp_cleanup import kill_session_mcp
 
 
 def log_session_end(input_data, cleanup_results):
@@ -103,7 +74,7 @@ def main():
     except (json.JSONDecodeError, Exception):
         input_data = {}
 
-    cleanup_results = cleanup_orphaned_mcp()
+    cleanup_results = kill_session_mcp()
     log_session_end(input_data, cleanup_results)
     sys.exit(0)
 

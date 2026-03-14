@@ -32,12 +32,12 @@ This is a configuration repo — no app build or runtime commands. Hooks are Pyt
 /create-plan → /audit-plan → /review-plan → /implement
 ```
 
-- **Fat orchestrator (1M context)** — reads full plan + all phases, writes targeted builder briefings with cross-phase context
-- **One builder per group** — builder stays alive across all phases in its group, accumulating context
-- **Builder worktree isolation** — one worktree per group, commit after each phase, orchestrator merges
-- **Plan-level auditing** — single auditor reviews ALL phases after all groups complete
-- **Playwright smoke checks** — orchestrator checks frontend between groups for console errors / broken pages
-- **6-layer quality gates** — PostToolUse hook → builder verification → validator /code-review → validator verification → Playwright smoke check → plan audit
+- **Solo sessions (1M context)** — each `/implement` session handles one group with full 1M context, no subagents
+- **User-managed parallelism** — user opens N terminals for N groups, each session reads the full plan
+- **Self code-review** — each session runs `/code-review` on its own work (no separate validator agent)
+- **Playwright smoke checks** — session checks frontend after group completes
+- **Audit mode** — separate `/implement --audit` session reviews all phases after all groups complete
+- **5-layer quality gates** — PostToolUse hook → TDD → self-verification → self code-review → Playwright smoke check
 
 ### Component Inventory
 

@@ -5,12 +5,17 @@
 # ///
 
 """
-SessionStart hook — injects git context and logs session start.
+SessionStart hook — injects git context, cleans MCP orphans, logs session start.
 
 Provides Claude with immediate situational awareness by injecting
 the current git branch and dirty file count. This saves a round-trip
 that would otherwise be spent on `git status` at the start of every
 conversation.
+
+Also cleans up orphaned MCP server processes from previous crashes.
+When Claude crashes, SessionEnd never fires, so MCP servers spawned
+via npx survive and accumulate. This hook catches them on the NEXT
+session start by killing MCP processes with no living Claude ancestor.
 """
 
 import json
@@ -19,6 +24,7 @@ import sys
 
 from utils.constants import LOG_DIR
 from utils.log_cleanup import cleanup
+from utils.mcp_cleanup import kill_orphaned_mcp
 from utils.mcp_health import check_mcp_health
 
 
@@ -100,6 +106,18 @@ def main():
         # --- Log cleanup (rotate JSONL, prune old sessions) ---
         try:
             cleanup()
+        except Exception:
+            pass  # Never block session start on cleanup failure
+
+        # --- MCP orphan cleanup (catch survivors from previous crashes) ---
+        try:
+            orphan_results = kill_orphaned_mcp()
+            if orphan_results:
+                _, count = orphan_results[0]
+                sys.stderr.write(
+                    f"MCP cleanup: killed {count} orphaned server "
+                    f"process{'es' if count != 1 else ''}\n"
+                )
         except Exception:
             pass  # Never block session start on cleanup failure
 

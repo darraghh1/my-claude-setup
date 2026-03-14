@@ -1,6 +1,6 @@
 # Claude Code Setup for Next.js / Supabase / TypeScript
 
-> **v5.0 — 1M Context Overhaul (2026-03-14):** Major architecture update for Opus 4.6's 1M context window. Key changes: fat orchestrator reads full plan + all phases and writes targeted builder briefings; one builder per group (persistent, accumulates context); plan-level auditing replaces per-group auditing; Playwright smoke checks between groups catch frontend wireup failures; phase sizing updated from "30 small" to "5-8 medium" phases; concurrency limits loosened; compact recovery demoted from critical infrastructure to safety net. See the [Development Workflow](#development-workflow) section for details.
+> **v6.0 — Solo Session Architecture (2026-03-14):** Major architecture update for Opus 4.6's 1M context window. Key changes: each `/implement` session handles one group as a solo builder with full 1M context (subagents only get 200K); user manages parallelism across terminals; no subagent infrastructure (no teams, builders, validators, worktree isolation); self code-review replaces independent validator agents; Playwright smoke checks after each group; `/implement --audit` mode for cross-phase review; phase sizing updated from "30 small" to "5-8 medium" phases. See the [Development Workflow](#development-workflow) section for details.
 
 A production-ready Claude Code configuration for Next.js/Supabase/TypeScript projects. Includes hooks for automated quality gates, skills for guided workflows, agents for specialized tasks, MCP server integrations, and comprehensive coding rules.
 
@@ -77,7 +77,7 @@ This setup's primary value is a **structured development pipeline** — from fea
   <img alt="Development pipeline diagram showing the flow from /create-plan through /audit-plan, /review-plan, and /implement with group-based auditing" src="docs/pipeline.png" width="950">
 </picture>
 
-`/implement` uses a **fat orchestrator** pattern — the orchestrator reads the full plan and every phase file, then writes targeted builder briefings with cross-phase context (service signatures, schema details, architectural decisions). One builder handles all phases in a group sequentially, accumulating context. After each group completes, a Playwright smoke check verifies the frontend still loads without console errors. After ALL groups complete, a single plan-level auditor reviews the entire implementation for cross-phase regressions, deferred items, and plan drift.
+`/implement` uses a **solo session** model — each Claude Code session handles one group with its full 1M context window. No subagents (they only get 200K). The session reads the entire plan for cross-phase awareness, then implements each phase directly: TDD, domain skill invocation, code review, verification, and commit. The user manages parallelism by opening multiple terminals. After all groups complete, a separate `/implement --audit` session reviews the full implementation.
 
 ### Phase Sizing (1M Context)
 
@@ -92,67 +92,56 @@ With Opus 4.6's 1M context window, the old "30 small phases" rule no longer appl
 | "Phase 03: Testing and Polish" (testing at end)  | TDD is Step 0 in _every_ phase                  |
 | 30 micro-phases for a medium feature             | 5-8 phases that each deliver a coherent slice    |
 
-Each phase file includes a `skill:` field in its frontmatter specifying which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The fat orchestrator extracts this value and includes it in the builder's targeted briefing alongside cross-phase context. The builder also reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
+Each phase file includes a `skill:` field in its frontmatter specifying which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The session invokes the appropriate domain skill and reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
 
-### Team Orchestration
+### Implementation Model — Solo Sessions
 
-`/create-plan` uses a thin dispatcher pattern. `/implement` uses a **fat orchestrator** — it reads the full plan, understands every phase, and writes targeted builder briefings with cross-phase context.
+**Why no subagents?** Subagents only get 200K context, not 1M. By running each group as its own Claude Code session, every phase implementation benefits from the full 1M window — holding the entire plan, all reference files, and accumulated context simultaneously.
 
-| Pipeline                          | Orchestrator                                                                                                       | Agents                                                                                              | Communication                                                                                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Planning** (`/create-plan`)     | Clarifies requirements, relays checkpoints to user, runs structural audit, spawns validators                       | Planner (creates plan.md + phases), Auditor (runs `/audit-plan`), Validators (run `/review-plan`)   | Checkpoints: planner reports plan summary and phase completion for user approval. Audit gates reviews — structural issues block before per-phase review work begins. |
-| **Implementation** (`/implement`) | Reads full plan + all phases, writes targeted builder briefings, runs Playwright smoke checks, triages audit findings | Builder (one per group), Validator (one per phase), Auditor (one for entire plan)                   | Builder → Validator → (between groups) Playwright smoke check → (after all groups) plan-level Auditor                                                                |
+```bash
+# User opens N terminals for N groups:
+Terminal 1: /implement plans/260314-auth auth-system
+Terminal 2: /implement plans/260314-auth dashboard-ui
+Terminal 3: /implement plans/260314-auth data-pipeline
 
-#### Implementation Team (`/implement`)
+# After all groups complete:
+Terminal 4: /implement plans/260314-auth --audit
+```
 
-| Role             | Lifetime                | Responsibility                                                                                                                                                                                                                                                                                                |
-| ---------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator** | Entire plan             | Reads full plan + all phases, writes targeted builder briefings with cross-phase context, gate checks, spawns/shuts down agents, merges worktree branches, routes verdicts, runs Playwright smoke checks between groups, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user)          |
-| **Builder**      | One group (persistent)  | Implements all phases in a group sequentially in an **isolated git worktree**, accumulating context. Receives targeted briefing from orchestrator with cross-phase context. Commits after each phase. Does NOT review its own code.                                                                              |
-| **Validator**    | One phase (ephemeral)   | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator.                                                                                                                                  |
-| **Auditor**      | Entire plan (ephemeral) | Plan-level analysis after ALL groups complete — reviews all phases together for cross-phase regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator.                                                                                            |
+Each session:
+1. Reads the **full plan + all phases** (1M — fits easily)
+2. Implements its assigned group's phases sequentially
+3. For each phase: TDD → implement → self-verify → self `/code-review` → commit
+4. Runs Playwright smoke check after the group completes
+5. Updates plan.md status
+
+**User manages parallelism** — open more terminals for more groups. Independent groups can run simultaneously. Groups with dependencies should run sequentially (group A before group B if B depends on A).
+
+**Playwright smoke checks:** After a group completes, the session navigates key app pages via Playwright MCP tools, checking for console errors, broken pages, and hydration failures. This catches frontend wireup problems that unit tests and typecheck can't detect.
 
 #### Planning Team (`/create-plan`)
+
+Planning still uses subagents (the orchestrator coordinates, subagents do focused work):
 
 | Role             | Lifetime              | Responsibility                                                                                                                                                         |
 | ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Orchestrator** | Entire session        | Clarifies requirements with user, spawns planner, runs structural audit, spawns validators, relays checkpoints for user approval, routes review feedback               |
 | **Planner**      | One plan (ephemeral)  | Reads templates, explores codebase references, creates plan.md + all phase files, self-validates. Reports at two checkpoints for user course-correction.               |
-| **Auditor**      | One audit (ephemeral) | Runs `/audit-plan` — structural flow audit checking dependencies, ordering, data flow. Bails with "Unusable" if plan is fundamentally broken. Gates per-phase reviews. |
 | **Validator**    | One file (ephemeral)  | Runs `/review-plan` against plan.md or a single phase file. Reports template score + codebase compliance. Only spawned after audit passes.                             |
-
-**Why one builder per group:** With 1M context, a single builder can handle all phases in a group sequentially — the builder that implements the database schema already knows the table structure when it builds the service layer. This eliminates the overhead of spawning a fresh builder per phase and the context loss that came with it. Validators remain ephemeral (fresh eyes for each phase review).
-
-**Builder worktree isolation:** Each builder runs in an isolated git worktree (`isolation: "worktree"`) with its own branch — one worktree per group. The builder commits after each phase, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge and the builder (still alive with full context) receives fix instructions.
-
-**Playwright smoke checks:** Between groups, the orchestrator navigates key app pages via Playwright MCP tools, checking for console errors, broken pages, and hydration failures. This catches frontend wireup problems that unit tests and typecheck can't detect — a recurring issue where pages stop loading after backend changes.
-
-**Context injection:** Teammates don't inherit the parent's full context — file-scoped rules, domain skills, and project patterns must reach agents another way. Five rules with `alwaysApply: true` (git-workflow, mcp-tools, security, date-formatting, domain-patterns) load natively for all teammates. The workflow skills (`builder-workflow`, `validator-workflow`, `auditor-workflow`) each start with a Step 0 that explicitly reads `coding-style.md` and `patterns.md`. `domain-patterns.md` provides compressed critical patterns from all 9 domain skills as passive context — following the [Vercel finding](docs/research/vercel-skills-findings.md) that passive context achieves 100% compliance vs 53-79% for on-demand skill invocation. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
-
-The `/implement` orchestrator processes groups sequentially with these concurrency limits:
-
-| Constraint              | Limit   | Why                                                                        |
-| ----------------------- | ------- | -------------------------------------------------------------------------- |
-| Builders per group      | 1       | One builder handles all phases in a group, accumulating context            |
-| Parallel groups         | Max 2   | Two independent groups can build simultaneously                            |
-| Validators per batch    | Max 2   | One per active builder completing a phase                                  |
-| **Total active agents** | **Max 6** | 1M context handles more, but agent results still consume tokens          |
-| Auditor                 | **Runs alone** | Needs undivided orchestrator attention for triage                   |
-
-Groups are processed sequentially in the order listed in the plan's Group Summary. Within a group, the builder implements phases one at a time. After each phase, the orchestrator merges the worktree branch and spawns a validator. Between groups, a Playwright smoke check verifies the frontend. After all groups, a plan-level auditor reviews everything.
 
 ### Quality Gates
 
-Quality is enforced at six layers, in order:
+Quality is enforced at five layers during each session, in order:
 
 | Layer                          | When                          | What Runs                                                                                                                                    | Catches                                                                                              |
 | ------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | **Global PostToolUse hook**    | Every Write/Edit on TS files  | `post_tool_use.py` (7 regex checks)                                                                                                          | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse            |
-| **Builder verification**       | After each phase              | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Test failures, type errors, E2E regressions, DB test failures                                        |
-| **Validator `/code-review`**   | After builder reports done    | Comprehensive checklist (Code Reuse, Efficiency, TypeScript, Security, RLS, React, Testing), codebase-grounded, auto-fix (independent agent) | Pattern deviations, reinvented utilities, TOCTOU anti-patterns, security issues, missing auth checks |
-| **Validator verification**     | After code review auto-fixes  | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Issues introduced by auto-fixes, E2E regressions, DB test failures                                   |
-| **Playwright smoke check**     | Between groups                | Navigate key pages via Playwright MCP, check console errors, verify rendering                                                                 | Frontend wireup failures, broken pages, hydration mismatches, missing imports                         |
-| **Plan-level audit**           | After all groups complete     | Single auditor reviews ALL phases for cross-phase regressions, deferred items, plan drift, acceptance criteria                                 | Cross-group integration gaps, convention violations, unresolved deferred items                        |
+| **TDD**                        | Before each phase             | Write failing tests first, then implement                                                                                                     | Regressions, missing coverage, bugs caught before they're written                                    |
+| **Self-verification**          | After each phase              | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Test failures, type errors, E2E regressions, DB test failures                                        |
+| **Self `/code-review`**        | After each phase              | Comprehensive checklist (Code Reuse, Efficiency, TypeScript, Security, RLS, React, Testing), codebase-grounded, auto-fix                      | Pattern deviations, reinvented utilities, TOCTOU anti-patterns, security issues, missing auth checks |
+| **Playwright smoke check**     | After group completes         | Navigate key pages via Playwright MCP, check console errors, verify rendering                                                                 | Frontend wireup failures, broken pages, hydration mismatches, missing imports                         |
+
+A separate **`/implement --audit`** session can be run after all groups complete to check cross-phase regressions, deferred items, and plan drift across the entire implementation.
 
 The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification. To enable the TypeScript LSP:
 
@@ -326,8 +315,8 @@ Optional:
 │   ├── post_tool_use_failure.py    # Actionable guidance after tool failures
 │   ├── pre_compact.py              # Transcript backup before context compaction
 │   ├── pre_tool_use.py             # Blocks dangerous commands, logs tool calls
-│   ├── session_end.py              # Logs session end + kills orphaned MCP processes
-│   ├── session_start.py            # Injects git context, runs log cleanup + MCP health checks
+│   ├── session_end.py              # Logs session end + session-aware MCP cleanup (kills only THIS session's servers)
+│   ├── session_start.py            # Injects git context, kills orphaned MCP servers, runs log cleanup + MCP health checks
 │   ├── stop.py                     # Transcript export + completion sound
 │   ├── stop_task_check.py          # Catches orphaned in_progress tasks at turn end
 │   ├── task_completed.py           # Verification gate on task completion (deduped)
@@ -337,6 +326,7 @@ Optional:
 │   ├── utils/
 │   │   ├── constants.py            # Shared paths, log directory helpers, JSONL logging
 │   │   ├── log_cleanup.py          # Auto-rotates JSONL log (5MB), prunes sessions (30 days)
+│   │   ├── mcp_cleanup.py          # Dynamic MCP orphan cleanup (reads config, walks process tree)
 │   │   ├── mcp_health.py           # MCP server binary availability checks
 │   │   └── notify.py               # Sound notification via HTTP (optional)
 │   └── validators/
@@ -429,8 +419,8 @@ All hooks are Python scripts executed via `uv run`. They are configured in `.cla
 | **Stop**               | `stop_task_check.py`       | When Claude stops          | Catches orphaned `in_progress` tasks via marker file handshake with `task_completed.py`. Injects systemMessage reminder to close them out.                        |
 | **PreCompact**         | `pre_compact.py`           | Before context compaction  | Logs compaction events. Optionally backs up the transcript before compression.                                                                                    |
 | **UserPromptSubmit**   | `user_prompt_submit.py`    | When user submits a prompt | Logs prompt metadata. Stores prompt text in session file for status display.                                                                                      |
-| **SessionStart**       | `session_start.py`         | When a session begins      | Injects git branch/status into context. Runs log cleanup (rotates JSONL at 5MB, prunes sessions >30 days). Checks MCP server binary availability.                |
-| **SessionEnd**         | `session_end.py`           | When a session ends        | Logs session end reason. Kills orphaned MCP processes (draw.io, Playwright) that leak after session exit. Bounds log at 100 entries.                              |
+| **SessionStart**       | `session_start.py`         | When a session begins      | Kills orphaned MCP servers from previous crashes (process-tree walk, only kills processes with no Claude ancestor). Injects git branch/status. Runs log cleanup + MCP health checks. |
+| **SessionEnd**         | `session_end.py`           | When a session ends        | Kills MCP servers owned by THIS session only (walks process tree to find descendants of current Claude PID). Patterns discovered dynamically from config files. Logs session end reason. |
 | **TaskCompleted**      | `task_completed.py`        | When a task is completed   | Verification gate — blocks first completion attempt with role-specific reminder, allows retry. Writes marker file for `stop_task_check.py`. Deduped with 5-min TTL. |
 | **TeammateIdle**       | `teammate_idle.py`         | When a teammate goes idle  | Logs teammate idle events for debugging agent lifecycle issues.                                                                                                    |
 | **InstructionsLoaded** | `instructions_loaded.py`   | When CLAUDE.md/rules load  | Logs which rules and instructions load per session. Useful for verifying teammate rule loading.                                                                    |
@@ -1144,6 +1134,26 @@ The test runner uses `uv run --script` with an inline `pytest` dependency — no
    ```bash
    npx playwright install chromium
    ```
+
+### Orphaned MCP processes accumulating
+
+**Symptom:** System slows down, high memory/swap usage, `ps aux | grep node | wc -l` returns 50+.
+
+**Cause:** When Claude crashes (rather than exiting gracefully), `SessionEnd` never fires. MCP servers spawned via `npx` create a deep process chain (claude → npm → sh → node) where leaf processes survive the crash and get reparented to init. On restart, Claude spawns new MCP servers on top of the orphans.
+
+**Automatic fix:** `session_start.py` now kills orphaned MCP servers on every session start. It discovers server patterns dynamically from config files (`~/.claude.json`, `~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json`) and uses process-tree ancestry to distinguish orphans from live servers — only kills MCP processes with no running Claude ancestor.
+
+**Manual fix:** If cleanup hasn't run yet:
+
+```bash
+# See what's running
+ps aux | grep -E "playwright-mcp|context7|tavily|sequential-thinking|drawio" | grep -v grep
+
+# Kill all MCP server processes (safe if no Claude sessions are running)
+pkill -f "playwright-mcp|context7-mcp|tavily-mcp|sequential-thinking|drawio-mcp"
+```
+
+**Prevention:** With multiple concurrent Claude sessions, each spawns all configured MCP servers. Consider moving MCP servers to project-level settings (`.claude/settings.json`) so each project only gets the servers it needs.
 
 ### Skills not found
 

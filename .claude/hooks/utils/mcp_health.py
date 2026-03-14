@@ -22,27 +22,34 @@ CLAUDE_CONFIG = Path.home() / ".claude.json"
 
 
 def _get_configured_servers() -> dict:
-    """Read MCP server configs from ~/.claude.json for the current project.
+    """Read MCP server configs from config files.
+
+    Checks ~/.claude.json and ~/.claude/settings.json for mcpServers
+    at the top level and under per-project entries.
 
     Returns a dict of {server_name: {command, args, ...}} or empty dict.
     """
-    if not CLAUDE_CONFIG.exists():
-        return {}
+    servers: dict = {}
 
-    try:
-        with open(CLAUDE_CONFIG, "r") as f:
-            config = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return {}
+    for config_path in [CLAUDE_CONFIG, CLAUDE_CONFIG.parent / "settings.json"]:
+        if not config_path.exists():
+            continue
 
-    # Find MCP servers for any project (check all project entries)
-    projects = config.get("projects", {})
-    for _path, project_config in projects.items():
-        servers = project_config.get("mcpServers", {})
-        if servers:
-            return servers
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
 
-    return {}
+        # Top-level mcpServers
+        servers.update(config.get("mcpServers", {}))
+
+        # Per-project mcpServers
+        for _path, project_config in config.get("projects", {}).items():
+            if isinstance(project_config, dict):
+                servers.update(project_config.get("mcpServers", {}))
+
+    return servers
 
 
 def check_mcp_health() -> list[str]:
