@@ -1,6 +1,6 @@
 ---
 name: improve-prompt
-description: "Improve a rough prompt into a detailed, actionable one using project context. Returns a well-structured prompt with file paths, patterns, and acceptance criteria."
+description: "Improve a rough prompt into a detailed, actionable one using project context. Returns a well-structured prompt with file paths, patterns, and acceptance criteria. Use when asked to 'improve this prompt', 'make this more specific', or before starting complex work with a vague description."
 argument-hint: "<rough prompt to improve>"
 metadata:
   version: 1.0.0

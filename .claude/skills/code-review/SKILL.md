@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Review code for quality, security, and pattern compliance, then auto-fix Critical/High issues. Grounds every finding in actual codebase reference files."
+description: "Review code for quality, security, and pattern compliance, then auto-fix Critical/High issues. Grounds every finding in actual codebase reference files. Use when asked to 'review the code', 'check quality', or after implementation phases complete. Do NOT use for plan reviews — use /review-plan instead."
 argument-hint: "[path-to-phase-file]"
 context: fork
 agent: general-purpose

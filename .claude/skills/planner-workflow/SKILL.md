@@ -147,17 +147,20 @@ Write `plans/{folder}/plan.md` with ALL sections from the template:
 
 Complete ALL sections except Phase Table rows. Missing sections are caught during review but cost extra review cycles to fix.
 
-### Phase Constraints
+### Phase Constraints (1M Context)
 
-Phases that exceed one context window cause Claude to lose earlier context mid-implementation, producing incomplete or inconsistent code. Each phase should be atomic enough for implementation in **1 context window** (~15KB document, ~2-3 hour focused session).
+With 1M context, builders can hold far more work in a single session. Phases should be **coherent units of work** — a service + its actions + its tests — not micro-slices.
 
-**30 small phases > 5 large phases**
+**5-8 medium phases > 30 small phases**
+
+One builder handles all phases in a group sequentially, accumulating context. This means the builder that implements the service layer *already knows the schema* when it builds the server actions. Design phases to exploit this continuity.
 
 | Wrong Approach | Right Approach |
 |----------------|----------------|
-| "Phase 01: Database + API + UI" | Split into 3 phases |
-| "Phase 02: Full Feature Implementation" | Break into atomic steps |
-| "Phase 03: Testing and Polish" | TDD is Step 0 in EACH phase |
+| "Phase 01: Create schema file" (too granular) | "Phase 01: Database schema + RLS + migration" |
+| "Phase 02: Add one server action" (too small) | "Phase 02: Service layer + all server actions" |
+| "Phase 03: Testing and Polish" (testing at end) | TDD is Step 0 in EACH phase |
+| 30 micro-phases for a medium feature | 5-8 phases that each deliver a coherent slice |
 
 **TDD Note:** Both backend and frontend code require full unit tests:
 - **Backend** (services, schemas, APIs): Unit tests in `__tests__/{feature}/`
@@ -168,7 +171,7 @@ Phases that exceed one context window cause Claude to lose earlier context mid-i
 - For Supabase client mocks, add `.then()` method for thenable/awaitable pattern
 - Path aliases in tests: use your project's configured path alias (e.g., `@/` or `~/`)
 
-**The test:** Can Claude implement this phase without running out of context? If unsure, split it.
+**The test:** Does this phase represent a coherent unit of work that a builder can implement with TDD in one session? If it spans unrelated concerns (e.g., auth + billing), split it. If it's a single file change, merge it with related work.
 
 ## Step 6: Checkpoint 1 — Report Plan Summary
 
@@ -259,8 +262,10 @@ dependencies: []
 - Connected phases building the same feature/component MUST share a `group:` name
 - Group names should be descriptive: `auth-system`, `dashboard-ui`, `data-pipeline`
 - Single-phase groups are valid for standalone work
-- Groups define audit boundaries — after all phases in a group complete during implementation, an auditor reviews them together
+- Groups define builder boundaries — one builder handles all phases in a group sequentially
+- One worktree per group — the builder accumulates context across phases within its group
 - Order groups so dependencies flow top-to-bottom (group A before group B if B depends on A)
+- After ALL groups complete, a single plan-level auditor reviews the entire implementation
 
 For phases spanning multiple concerns, list the primary skill or use comma-separated values:
 ```yaml

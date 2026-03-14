@@ -51,19 +51,9 @@ TaskCreate({
     created_by: "{your-agent-name}",
     agent_type: "validator",
     phase: "P{NN}",
-    group: "{group-name}",
-    skill: "{skill-from-phase}",
-    role: "review",
-    attempt: 1,
-    parent_task_id: "{orchestrator-phase-task-id-from-spawn-prompt}"
+    role: "review"
   }
 })
-```
-
-After creating, set yourself as owner:
-
-```
-TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
 ```
 
 **Standard validator tasks:**
@@ -188,11 +178,8 @@ IMPORTANT: Before using the Write tool on any existing file, you MUST Read it fi
 
 ## Resuming After Context Compact
 
-If your context was compacted mid-validation:
+At 1M context, compaction is rare. If it happens:
 
-1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
-2. Find your `in_progress` task, or if none, your first `pending` task
-3. `TaskGet` on that task → read the description AND `metadata`
-4. Metadata tells you: which phase (`phase`), which group (`group`), and which orchestrator task you report to (`parent_task_id`)
-5. Continue from that task — don't restart the validation
-6. The task list and metadata are your source of truth, not your memory
+1. `TaskList` → find your `in_progress` or first `pending` task (filter by owner)
+2. `TaskGet` → read description and metadata for context
+3. Continue from that task — don't restart

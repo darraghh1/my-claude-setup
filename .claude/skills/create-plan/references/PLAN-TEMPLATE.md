@@ -31,12 +31,13 @@ updated: YYYY-MM-DD
 
 We follow a **[e.g., Progressive Enhancement]** strategy. The goal is to establish the [Spine/Core] first to enable rapid expansion.
 
-### Phase Constraints
+### Phase Constraints (1M Context)
 
-- **Size:** 10-15KB max per phase document
-- **Scope:** Single implementation session target
+- **Size:** 20-30KB max per phase document (5x headroom at 1M context)
+- **Scope:** One coherent unit of work — a service + its actions + its tests
+- **Target:** 5-8 medium phases per feature, not 30 micro-phases
 - **Dependencies:** Explicit in phase header
-- **Review gate:** Code review via `code-quality-reviewer` sub-agent before marking DONE
+- **Review gate:** Code review via independent validator before marking DONE
 
 ### Phase File Naming
 
@@ -55,7 +56,7 @@ We follow a **[e.g., Progressive Enhancement]** strategy. The goal is to establi
 
 ### Group Summary
 
-Groups define audit boundaries — connected phases are reviewed together after the group completes.
+Groups define builder boundaries — one builder handles all phases in a group sequentially, accumulating context. After ALL groups complete, a single plan-level auditor reviews the entire implementation.
 
 | Group | Phases | Description |
 |-------|--------|-------------|

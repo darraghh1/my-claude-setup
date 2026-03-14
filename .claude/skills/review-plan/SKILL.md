@@ -1,6 +1,6 @@
 ---
 name: review-plan
-description: "Review plan.md or a single phase file against templates and codebase compliance. One file per invocation."
+description: "Review plan.md or a single phase file against templates and codebase compliance. One file per invocation. Use when asked to 'review the plan', 'check the phase', or as part of the /create-plan pipeline. Do NOT use for structural flow audits — use /audit-plan instead."
 argument-hint: "[plan-folder] [phase NN]"
 allowed-tools: "Read Grep Glob Write Edit Bash(python*) TaskCreate TaskUpdate TaskList TaskGet"
 metadata:

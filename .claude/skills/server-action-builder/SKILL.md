@@ -1,6 +1,6 @@
 ---
 name: server-action-builder
-description: "Create Next.js Server Actions with Zod validation, auth, and service layer integration. Generates schema + service + action files."
+description: "Create Next.js Server Actions with Zod validation, auth, and service layer integration. Generates schema + service + action files. Use when building server actions, API mutations, or 'use server' functions. Do NOT use for database schemas — use /postgres-expert instead."
 argument-hint: "[feature-name]"
 metadata:
   version: 1.0.0

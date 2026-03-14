@@ -1,200 +1,119 @@
 ---
 name: implement
-description: "Execute phases from a plan using group-based processing. Builds phases in parallel within groups, audits each group after completion, and auto-fixes Medium/Low issues while escalating High/Critical to the user."
+description: "Execute phases from a plan. Fat orchestrator reads full plan, writes targeted builder briefings, runs Playwright smoke checks between groups, and spawns a single plan-level auditor. Use when a reviewed plan is ready for implementation, or when asked to 'implement the plan'. Do NOT use without a reviewed plan — use /create-plan first."
 argument-hint: "[plan-folder]"
 metadata:
-  version: 4.0.0
+  version: 5.0.0
 ---
 
 # Implement Plan
 
 Implement phases from: **$ARGUMENTS/plan.md**
 
-## Architecture
+## Architecture (1M Context — Fat Orchestrator)
 
-This skill is a **thin dispatcher**. It does NOT read references, extract patterns, or implement code. Builders handle implementation, validators handle review, and auditors handle cross-phase analysis.
+With 1M context, the orchestrator is the **most informed agent in the system**. It reads every phase, understands the full architectural picture, and writes targeted builder briefings — not just file paths.
 
-| Role                   | Responsibility                                                                                                                                |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator (you)** | Parse groups, gate checks, spawn/shutdown agents, route verdicts, triage auditor findings, track cross-group state                            |
-| **Builder**            | Phase implementation: read phase, find references, invoke skills, code, test, typecheck. Does NOT review its own code.                        |
-| **Validator**          | Independent review: runs `/code-review` (reference-grounded, with auto-fix), then typecheck + tests. Reports PASS/FAIL.                       |
-| **Auditor**            | Group-level audit: cross-phase regressions, deferred items, plan drift, system integrity. Read-only — reports findings with severity ratings. |
+| Role | Responsibility |
+|------|---------------|
+| **Orchestrator (you)** | Read full plan, write targeted builder briefings, gate checks, spawn/shutdown agents, route verdicts, run Playwright smoke checks between groups, triage auditor findings |
+| **Builder** | Group implementation: handle all phases in a group sequentially, accumulating context. Does NOT review its own code. |
+| **Validator** | Independent review: runs `/code-review`, then typecheck + tests. Reports PASS/FAIL. |
+| **Auditor** | Plan-level audit after ALL groups complete: cross-phase regressions, deferred items, plan drift. Read-only. |
 
-**All agents are ephemeral.** Each gets a fresh 200K context and is shut down after its cycle. This prevents context contamination, ensures skill instructions are never compacted, and eliminates bottlenecks.
+**Builders run in isolated git worktrees.** One worktree per group — the builder commits after each phase, the orchestrator merges, and the validator runs on the merged result.
 
-**Builders run in isolated git worktrees.** Each builder gets `isolation: "worktree"` — a separate working directory with its own branch. This prevents parallel builders from corrupting each other's files. The builder commits to its worktree branch, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge.
+**One builder per group.** The builder stays alive across all phases in its group, accumulating context. This means the builder that implements the database schema already knows the table structure when it builds the service layer.
 
 ### Processing Model
 
 ```
+Step 1: Read full plan + all phases (orchestrator builds complete picture)
+Step 2: Gate check plan reviews
 for each group (sequential):
-  1. Gate check all phases in group
-  2. Build phases (parallel where deps allow)
-  3. Validate each phase (PASS/FAIL routing)
-  4. When all group phases PASS → spawn auditor
-  5. Orchestrator reads auditor report and triages:
-     - Clean/Low → log deviations, continue to next group
-     - Medium → auto-spawn builder + validator to fix
-     - High/Critical → checkpoint with user, then fix
-  6. Track deviation summary for next group's auditor
+  3. Spawn one builder for the group (all phases)
+  4. For each phase in group:
+     - Builder implements phase → commits to worktree branch
+     - Orchestrator merges branch → spawns validator
+     - PASS: update status, continue to next phase in group
+     - FAIL: revert merge, send fix instructions to builder, re-validate
+  5. Shutdown builder + validators for this group
+  6. Playwright smoke check (navigate key pages, check for console errors)
+  7. Continue to next group
+After all groups:
+  8. Spawn plan-level auditor
+  9. Triage findings
+  10. Cleanup
 ```
 
 ---
 
-## Step 1: Read and Review the Plan
+## Step 1: Read and Understand the Full Plan
 
-1. Read the plan file at `$ARGUMENTS/plan.md`
-2. Check if `$ARGUMENTS/reviews/planning/plan.md` exists
-3. If no review exists, run `/review-plan $ARGUMENTS` first
-4. **Read the review file** at `$ARGUMENTS/reviews/planning/plan.md`
-5. **Check the Verdict section:**
-   - If `Yes` → proceed to Step 2
-   - If `No` → **STOP** and report the Critical Issues to the user
+**This is what makes you a fat orchestrator.** Read everything — you have 1M context.
 
-## Step 2: Check Flow Audit
+1. Read `$ARGUMENTS/plan.md` — extract Phase Table, Group Summary, Architectural North Star, Security Requirements, Decision Log
+2. Read **every phase file** listed in the Phase Table
+3. For each phase, extract: title, skill, group, dependencies, key files, acceptance criteria, implementation steps
+4. Build a mental model of the entire feature — what connects to what, which services feed which components
 
-**1. Count phases** in the Phase Table.
+**Why this matters:** You'll use this understanding to write targeted builder briefings (Step 6) that include cross-phase context the builder would otherwise have to discover itself.
 
-**2. Skip for small plans:** If 1-2 phases, skip to Step 3.
+## Step 2: Gate Check Plan Reviews
 
-**3. Check if audit exists:** Look for `$ARGUMENTS/reviews/planning/flow-audit.md`.
+1. Check `$ARGUMENTS/reviews/planning/plan.md` exists — if not, run `/review-plan $ARGUMENTS` first
+2. Read the review verdict — if "No", **STOP** and report Critical Issues
+3. For plans with 3+ phases, check `$ARGUMENTS/reviews/planning/flow-audit.md`
+   - If missing, tell user to run `/audit-plan $ARGUMENTS` first
+   - "Unusable" or "Major Restructuring" → **HARD BLOCK**
+   - "Significant Issues" → **SOFT BLOCK** (ask user)
+   - "Minor Issues" or "Coherent" → proceed
 
-**4. If missing:** STOP and tell the user to run `/audit-plan $ARGUMENTS` first.
-
-**5. Gate logic:**
-
-| Overall Assessment                   | Behaviour                                                                 |
-| ------------------------------------ | ------------------------------------------------------------------------- |
-| **"Unusable"**                       | **HARD BLOCK:** STOP. Plan is fundamentally broken — needs restructuring. |
-| **"Major Restructuring Needed"**     | **HARD BLOCK:** STOP. Report issues to user.                              |
-| **"Significant Issues"**             | **SOFT BLOCK:** WARN user. Ask whether to proceed or fix.                 |
-| **"Minor Issues"** or **"Coherent"** | **PROCEED.**                                                              |
-
-## Step 3: Parse Groups and Build Execution Plan
+## Step 3: Parse Groups and Create Tasks
 
 **3a: Check for existing tasks (compact recovery):**
 
-Run `TaskList` first. If tasks already exist from a previous session or context compact:
+Run `TaskList` first. If tasks exist from a previous session, find the `in_progress` task and resume.
 
-1. Read existing tasks with `TaskGet` for each task ID
-2. If any task is `in_progress` — resume from that point
-3. Do NOT recreate the task list
-
-**3b: Parse the Phase Table and Group Summary:**
-
-Read plan.md's Phase Table. For each phase, extract: number, title, group, focus, status, dependencies.
-
-Read the Group Summary table to get group ordering and descriptions.
-
-Build a group execution plan:
+**3b: Build group execution plan** from plan.md's Phase Table and Group Summary:
 
 ```
 groups = [
-  { name: "auth-system", phases: [P01, P02, P03], description: "..." },
-  { name: "dashboard-ui", phases: [P04, P05, P06, P07], description: "..." },
-  ...
+  { name: "auth-system", phases: [P01, P02, P03] },
+  { name: "dashboard-ui", phases: [P04, P05] },
 ]
 ```
 
-Groups are processed sequentially in the order listed in the Group Summary. Phases within a group are processed in parallel where dependencies allow.
+**3c: Create orchestrator tasks** (first run only):
 
-If all phases are done:
-
-1. Report completion to the user
-2. Skip to Step 10 (cleanup)
-
-**3c: Create orchestrator tasks (first run only):**
-
-If no tasks exist yet, create tasks with **rich, self-contained descriptions** and **structured metadata**. Record each task's ID — you'll pass phase task IDs to builders in their spawn prompts so they can set `parent_task_id`.
+One task per group + one task for the plan audit:
 
 ```
 TaskCreate({
-  subject: "Group: {group-name} — Phase {NN}: {title}",
-  description: `Phase file: $ARGUMENTS/phase-{NN}-{slug}.md
-Group: {group-name} ({N} phases in group: P{NN}, P{MM}, ...)
-Skill: {skill-from-frontmatter}
-Dependencies: {list or "none"}
+  subject: "Group: {group-name} — {N} phases: P{NN}, P{MM}, ...",
+  description: `Phases: {list with titles}
+Skill(s): {skills from frontmatters}
+Key deliverables: {top acceptance criteria across group phases}
 
-Key deliverables from acceptance criteria:
-- {criterion 1}
-- {criterion 2}
-- {criterion 3}
-
-Gate check → build → validate → mark done.
-After all phases in group "{group-name}" complete, spawn auditor for group review.`,
-  activeForm: "Implementing Phase {NN} ({group-name})",
-  metadata: {
-    created_by: "orchestrator",
-    agent_type: "orchestrator",
-    phase: "P{NN}",
-    group: "{group-name}",
-    skill: "{skill-from-frontmatter}",
-    role: "phase",
-    attempt: 1
-  }
+Spawn builder → implement all phases → validate each → smoke check → done.`,
+  activeForm: "Implementing group {group-name}",
+  metadata: { created_by: "orchestrator", group: "{group-name}", role: "group" }
 })
 ```
-
-Then set up dependencies with `TaskUpdate` using `addBlockedBy` to mirror each phase's `dependencies` frontmatter.
-
-Also create one task per group for the audit step:
-
-```
-TaskCreate({
-  subject: "Audit group: {group-name}",
-  description: `Spawn auditor after all phases in group complete.
-Group: {group-name}
-Phases: P{NN}, P{MM}, ...
-Plan folder: $ARGUMENTS
-
-Auditor reviews: cross-phase regressions, deferred items, plan drift, acceptance criteria.
-Triage: Clean/Low → continue. Medium → auto-fix. High/Critical → ask user.`,
-  activeForm: "Auditing group {group-name}",
-  metadata: {
-    created_by: "orchestrator",
-    agent_type: "orchestrator",
-    group: "{group-name}",
-    role: "audit",
-    attempt: 1
-  }
-})
-```
-
-Set audit tasks to be blocked by all phase tasks in their group.
-
-**3d: Determine current group and unblocked phases:**
-
-Find the first group with pending phases. Within that group, identify unblocked phases (all dependencies satisfied).
 
 ## Step 4: Gate Check Phases
 
-Before spawning builders, gate-check each unblocked phase. Mark each phase task as `in_progress`:
+Before spawning a builder for a group, gate-check each phase in the group:
 
-```
-TaskUpdate({ taskId: "{phase-task-id}", status: "in_progress" })
-```
+1. **Skeleton check:**
+   ```bash
+   echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_no_placeholders.py \
+     --directory $ARGUMENTS --extension .md
+   ```
 
-**4a: Check for skeleton/placeholder content:**
+2. **Phase review check:** Verify `$ARGUMENTS/reviews/planning/phase-{NN}.md` exists and verdict is "Ready: Yes". If missing, run `/review-plan $ARGUMENTS phase {NN}`.
 
-```bash
-echo '{"cwd":"."}' | uv run $CLAUDE_PROJECT_DIR/.claude/hooks/validators/validate_no_placeholders.py \
-  --directory $ARGUMENTS --extension .md
-```
-
-If non-zero exit, the phase contains placeholder content. **STOP** — do not spawn a builder for a skeleton phase.
-
-**4b: Verify the phase review:**
-
-1. Check if `$ARGUMENTS/reviews/planning/phase-{NN}.md` exists
-2. If no review exists, run `/review-plan $ARGUMENTS phase {NN}`
-3. **Read the review Verdict:**
-   - **Ready: Yes** → proceed to Step 5
-   - **Ready: No** → **FIX the phase first**, re-run review, then proceed
-
-## Step 5: Create Team (First Run Only)
-
-Create the team on the first run. Reuse it across all groups.
+## Step 5: Create Team
 
 ```
 TeamCreate({
@@ -205,279 +124,204 @@ TeamCreate({
 
 ## Concurrency Limits
 
-**Hard cap: 4 total active agents (builders + validators + auditor combined).** The auditor runs alone — no builders or validators during audit.
+| Constraint | Limit | Why |
+|-----------|-------|-----|
+| Builders per group | 1 | One builder handles all phases in a group |
+| Parallel groups | Max 2 | Two groups can build simultaneously if independent |
+| Validators per batch | Max 2 | One per active builder completing a phase |
+| **Total active agents** | **Max 6** | Orchestrator has 1M context but agent results still consume tokens |
+| Auditor | **Runs alone** | Needs undivided orchestrator attention for triage |
 
-| Constraint              | Limit                          | Why                                                  |
-| ----------------------- | ------------------------------ | ---------------------------------------------------- |
-| Builders per batch      | Max 2                          | Context pressure from parallel completions           |
-| Validators per batch    | Max 2 (one per active builder) | Each builder gets one validator                      |
-| **Total active agents** | **Max 4**                      | Orchestrator context budget                          |
-| Auditor                 | **Runs alone**                 | Needs undivided orchestrator attention for triage    |
-| Batch overlap           | **None**                       | Wait for current batch to fully complete before next |
+## Step 6: Spawn Builder for Group
 
-## Step 6: Spawn Builders
+**Before spawning, use your understanding of the full plan to write a targeted briefing.** This is the key advantage of the fat orchestrator — the builder starts with understanding, not discovery.
 
-Spawn a fresh builder for each unblocked phase that passed gate-checking. **Max 2 builders per batch.**
-
-**Before spawning, extract the `skill:` field from each phase's YAML frontmatter.**
+Extract the `skill:` field from each phase's YAML frontmatter.
 
 ```
 Task({
-  description: "Implement phase {NN}",
+  description: "Implement group {group-name}",
   subagent_type: "builder",
   model: "opus",
   team_name: "{plan-name}-impl",
-  name: "builder-1",
+  name: "builder-{group-name}",
   mode: "bypassPermissions",
   isolation: "worktree",
-  prompt: `Implement the phase at: $ARGUMENTS/phase-{NN}-{slug}.md
-Plan folder: $ARGUMENTS
-Skill: {skill-from-frontmatter}
-Group: {group-name}
-Parent task ID: {phase-task-id}
+  prompt: `Implement all phases in the "{group-name}" group.
 
-Your agent name is "{builder-name}" — use this as owner on all tasks you create.
+## Context from the Full Plan
 
-Your first action: invoke the builder-workflow skill via Skill({ skill: "builder-workflow" }). It teaches you how to:
-1. Read the phase and extract requirements
-2. Invoke the Skill above (if not "none") and find reference files
-3. Create internal tasks (TaskCreate) for each step — prefix with [Step], set owner to your name, include metadata (agent_type: "builder", phase, group, skill, parent_task_id). This is REQUIRED for context compact recovery
-4. Implement with TDD (Step 0 first), marking tasks in_progress/completed as you go
-5. Run tests and typecheck
-6. Commit all changes to your worktree branch before reporting
-7. Report completion to team-lead (do NOT run /code-review — the validator handles that independently)
+{Write 5-15 lines of targeted context here. Include:
+- What earlier groups already built (service signatures, table names, schemas)
+- Key architectural decisions from plan.md's Decision Log relevant to this group
+- Specific patterns this group should follow (from your reading of all phases)
+- Integration points: what this group's output will feed into for later groups}
 
-WORKTREE: You are in an isolated git worktree with your own branch. Your changes are invisible to other builders. You MUST commit before reporting completion — uncommitted changes cannot be merged. Use: git add -A && git commit -m "feat(phase-{NN}): {phase-title}"
+## Phases to Implement (in order)
 
-IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail.`
+### Phase {NN}: {title}
+File: $ARGUMENTS/phase-{NN}-{slug}.md
+Skill: {skill}
+Key deliverables: {2-3 bullet points from acceptance criteria}
+
+### Phase {MM}: {title}
+File: $ARGUMENTS/phase-{MM}-{slug}.md
+Skill: {skill}
+Key deliverables: {2-3 bullet points from acceptance criteria}
+
+[...list all phases in group...]
+
+## Instructions
+
+Your first action: invoke the builder-workflow skill via Skill({ skill: "builder-workflow" }).
+
+Implement each phase sequentially. After completing each phase:
+1. Run tests + typecheck
+2. Commit: git add -A && git commit -m "feat(phase-{NN}): {title}"
+3. Report to team-lead which phase completed, then continue to the next phase in the group
+
+WORKTREE: You are in an isolated git worktree. Commit after EACH phase — the orchestrator merges and validates between phases. Uncommitted changes are lost.
+
+IMPORTANT: Before using Write on any existing file, you MUST Read it first.`
 })
 ```
 
-## Step 7: Wait and Route Builder/Validator Cycle
+## Step 7: Builder/Validator Cycle
 
-Wait for builder completion messages. When a builder reports done:
+When the builder reports a phase completion:
 
 ### 7a: Merge Worktree Branch
-
-The builder's Task result includes a `branch` field (the worktree branch). Merge it into the main working tree before validation:
 
 ```bash
 git merge --no-ff {worktree-branch} -m "merge: phase {NN} - {title}"
 ```
 
-If the merge has conflicts:
-
-1. Attempt auto-resolution for trivial conflicts (import ordering, formatting)
-2. If non-trivial conflicts exist, **STOP** and report to the user — manual resolution needed
+If conflicts: attempt auto-resolution for trivial conflicts. Non-trivial → **STOP** and report to user.
 
 ### 7b: Spawn Validator
-
-After successful merge, spawn a fresh validator. The validator runs on the main tree (no worktree) to verify the integrated result:
 
 ```
 Task({
   description: "Validate phase {NN}",
   subagent_type: "validator",
+  model: "opus",
   team_name: "{plan-name}-impl",
   name: "validator-{N}",
   mode: "bypassPermissions",
-  prompt: `Validate phase {NN} on the {plan-name}-impl team. Follow the workflow defined in your agent instructions.
+  prompt: `Validate phase {NN}. Follow the workflow in your agent instructions.
 
 Phase file: $ARGUMENTS/phase-{NN}-{slug}.md
 Plan folder: $ARGUMENTS
 Group: {group-name}
-Parent task ID: {phase-task-id}
 
-Your agent name is "{validator-name}" — use this as owner on all tasks you create.
+Run /code-review against the phase file, then verify with typecheck + tests. Report PASS/FAIL to team-lead.
 
-Run /code-review against the phase file, then verify with typecheck + tests. Report PASS/FAIL to team-lead via SendMessage.
-Create [Review] tasks with metadata (agent_type: "validator", phase, group, parent_task_id) for compact recovery.`
+IMPORTANT: Before using Write on any existing file, you MUST Read it first.`
 })
 ```
 
-### 7c: Wait for ALL validator verdicts in this batch before proceeding.
-
-### Handle Verdict
+### 7c: Handle Verdict
 
 **PASS:**
-
-1. Update phase YAML frontmatter: `status: done`
-2. Update Phase Table in plan.md: status → "Done"
-3. Mark the phase task as completed
-4. Shutdown the builder and validator for this phase
-5. When the entire batch is complete, check: are ALL phases in the current group done?
-   - **Yes** → proceed to Step 8 (Group Audit)
-   - **No** → loop back to find next unblocked phases in this group, spawn next batch
+1. Update phase frontmatter: `status: done`
+2. Update Phase Table in plan.md
+3. Mark phase complete in task metadata
+4. Message builder to proceed to next phase in group (or shutdown if group is done)
 
 **FAIL:**
+1. Revert the merge: `git revert --no-edit HEAD`
+2. Shutdown the validator (stale context)
+3. Message the builder with the validator's specific fix instructions — the builder is still alive with full context of the group
+4. Wait for builder to fix + recommit → merge → spawn fresh validator
+5. After 3 FAIL cycles on same phase → **STOP** and report to user
 
-1. Revert the worktree merge to restore a clean main branch:
+### 7d: Group Complete
 
+When all phases in a group pass validation, shutdown the builder and all validators for this group.
+
+## Step 8: Playwright Smoke Check (Between Groups)
+
+**Why:** The user has repeatedly caught issues where the frontend wireup didn't happen or pages stopped loading entirely — problems that unit tests and typecheck don't catch.
+
+After each group completes (before starting the next group), run a quick smoke check:
+
+1. **Start the dev server** (if not already running):
    ```bash
-   git revert --no-edit HEAD
+   pnpm dev &
+   sleep 5  # Wait for server startup
    ```
 
-1. Shutdown current builder AND validator (both contexts may be stale)
-1. Spawn a **fresh builder** (with `isolation: "worktree"`) with the validator's fix instructions
-1. Wait for fix builder → merge branch → spawn fresh validator → re-validate → repeat until PASS
+2. **Navigate to key app pages** using Playwright MCP:
+   ```
+   mcp__playwright__browser_navigate → http://localhost:3000
+   mcp__playwright__browser_console_messages → check for errors
+   mcp__playwright__browser_snapshot → verify page rendered
+   ```
 
-## Step 8: Group Audit
+3. **Check for:**
+   - Console errors (especially import errors, undefined references, hydration mismatches)
+   - Pages that fail to render (blank screen, error boundary)
+   - 500 errors from server components
 
-When all phases in a group have passed validation, spawn an auditor for the group.
+4. **If issues found:**
+   - Log the specific errors
+   - Spawn a fix builder (with worktree isolation) targeting the broken pages
+   - Re-validate after fix
+   - If unfixable → checkpoint with user before proceeding
 
-**Mark the group audit task as `in_progress`:**
+5. **If clean:** Continue to next group
 
-```
-TaskUpdate({ taskId: "{audit-task-id}", status: "in_progress" })
-```
+**Pages to check:** Derive from the group's phases — if the group built notifications, check `/home/[account]/notifications`. Always check the app root `/home/[account]` as a baseline.
 
-**Shutdown all builders and validators from this group first** — the auditor runs alone.
+**Skip this step** if the plan has no frontend phases (database-only, service-only plans).
 
-**Spawn the auditor:**
+## Step 9: Plan-Level Audit
+
+After **ALL** groups complete, spawn a single auditor for the entire plan.
 
 ```
 Task({
-  description: "Audit group {group-name}",
+  description: "Audit full plan implementation",
   subagent_type: "auditor",
   model: "opus",
   team_name: "{plan-name}-impl",
-  name: "auditor-{group-name}",
+  name: "plan-auditor",
   mode: "bypassPermissions",
-  prompt: `Audit the "{group-name}" phase group.
+  prompt: `Audit the complete implementation of this plan.
 
 Plan folder: $ARGUMENTS
-Group: {group-name}
-Parent task ID: {audit-task-id}
-Phases in this group:
-- Phase {NN}: {title} — $ARGUMENTS/phase-{NN}-{slug}.md
-- Phase {MM}: {title} — $ARGUMENTS/phase-{MM}-{slug}.md
-[...list all phases in group...]
+All phases:
+{list every phase with number, title, file path, group}
 
-Your agent name is "{auditor-name}" — use this as owner on all tasks you create.
+Your first action: invoke the auditor-workflow skill via Skill({ skill: "auditor-workflow" }).
 
-Previous group deviations:
-{deviation-summary-from-previous-groups OR "None — this is the first group."}
+Review ALL phases together — cross-phase regressions, deferred items, plan drift, acceptance criteria, coding convention compliance.
 
-Your first action: invoke the auditor-workflow skill via Skill({ skill: "auditor-workflow" }). It teaches you how to:
-1. Read all group phases and build inventory
-2. Collect and review code reviews for group phases
-3. Check deferred items against current code
-4. Cross-phase impact analysis (shared files, imports, overwrites)
-5. Run verification (tests + typecheck)
-6. Plan vs implementation comparison (acceptance criteria, ADRs)
-7. Consider previous groups' deviations
-8. Write audit report to $ARGUMENTS/reviews/implementation/group-{group-name}-audit.md
-9. Report findings to team-lead with severity ratings
+Write your report to: $ARGUMENTS/reviews/implementation/plan-audit.md
 
-IMPORTANT: You are READ-ONLY. Do not modify source code. Write only the audit report file.`
+IMPORTANT: You are READ-ONLY. Do not modify source code.`
 })
 ```
 
-## Step 9: Triage Auditor Findings
+## Step 10: Triage Auditor Findings
 
-When the auditor reports back, **read the full audit report** at `$ARGUMENTS/reviews/implementation/group-{group-name}-audit.md`.
+Read the full audit report at `$ARGUMENTS/reviews/implementation/plan-audit.md`.
 
-**9a: Create tasks from findings FIRST (compact safety):**
+| Finding Severity | Action |
+|-----------------|--------|
+| **No issues / Low only** | Log summary, continue to cleanup |
+| **Medium** | Auto-spawn builder to fix + validator to verify |
+| **High / Critical** | **Checkpoint with user** — present findings and ask for direction |
 
-Before spawning any fix builders, create tasks for each finding that needs action. This ensures findings survive context compaction:
+For Medium fixes: spawn a builder with worktree isolation, merge, validate. Max 3 attempts per finding, then escalate.
 
-```
-TaskCreate({
-  subject: "Fix: {finding summary} (group {group-name})",
-  description: `From auditor report: $ARGUMENTS/reviews/implementation/group-{group-name}-audit.md
+## Step 11: Cleanup
 
-Severity: {Critical/High/Medium/Low}
-Phase: P{NN}
-File: {file:line from auditor report}
-Issue: {description from auditor report}
-Suggested fix: {fix from auditor report}`,
-  activeForm: "Fixing {finding summary}"
-})
-```
-
-**9b: Triage by severity:**
-
-| Finding Severity         | Action                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------- |
-| **No issues / Low only** | Log deviation summary, mark audit task complete, continue to next group                 |
-| **Medium**               | Auto-spawn builder to fix + validator to verify. No user input needed.                  |
-| **High / Critical**      | **Checkpoint with user.** Present the findings and ask for direction before proceeding. |
-
-**9c: For Medium findings — auto-fix cycle:**
-
-1. Spawn a builder (with `isolation: "worktree"`) with the specific fix instructions from the auditor report
-2. Wait for builder completion → merge worktree branch (same as Step 7a)
-3. Spawn validator to verify the fix on main
-4. If PASS → mark fix task complete
-5. If FAIL → revert merge, retry (max 3 attempts per finding, then escalate to user)
-
-**9d: For High/Critical findings — user checkpoint:**
-
-Present the auditor's findings to the user:
-
-```
-## Group "{group-name}" Audit — Needs Your Input
-
-**Assessment:** {from audit report}
-
-### Critical/High Findings:
-1. {finding 1 — severity, phase, file:line, issue}
-2. {finding 2}
-...
-
-### Auditor's Recommendation:
-{from audit report}
-
-**Options:**
-1. Fix all — I'll spawn builders for each finding
-2. Fix specific items — tell me which ones
-3. Skip and continue — accept the findings as-is
-4. Stop implementation — address these manually
-```
-
-Use `AskUserQuestion` to get the user's choice, then act accordingly.
-
-**9e: Track deviation summary:**
-
-After all findings are resolved (or accepted), build a deviation summary for the next group's auditor:
-
-```
-deviation_summaries[group_name] = {
-  assessment: "{from audit report}",
-  key_deviations: ["{finding 1}", "{finding 2}"],
-  unresolved: ["{any findings user chose to skip}"]
-}
-```
-
-Pass this to the next auditor in its spawn prompt (see Step 8, "Previous group deviations").
-
-**9f: Mark audit task complete and continue:**
-
-```
-TaskUpdate({ taskId: "{audit-task-id}", status: "completed" })
-```
-
-Shutdown the auditor:
-
-```
-SendMessage({ type: "shutdown_request", recipient: "auditor-{group-name}" })
-```
-
-Loop back to Step 3 to start the next group.
-
-## Step 10: Cleanup
-
-When all groups are done OR an error breakout condition is met:
-
-1. **Shutdown all active teammates:**
-
-```
-// For each active agent:
-SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
-```
-
-2. **Delete team:** `TeamDelete()`
-3. **Report final summary to user:**
+1. **Close out ALL tasks** — run `TaskList`, mark everything `completed`. If the TaskCompleted hook blocks first attempt, **retry immediately**.
+2. Shutdown all active teammates
+3. `TeamDelete()`
+4. Stop dev server if started for smoke checks
+5. Report summary:
 
 ```
 ## Implementation Complete
@@ -486,55 +330,44 @@ SendMessage({ type: "shutdown_request", recipient: "{agent-name}" })
 **Groups:** {count} completed
 **Phases:** {count} Done
 
-### Group Audit Results:
-| Group | Assessment | Critical | High | Medium | Low |
-|-------|-----------|----------|------|--------|-----|
-| {name} | {verdict} | {N} | {N} | {N} | {N} |
+### Smoke Check Results:
+| After Group | Pages Checked | Console Errors | Status |
+|------------|--------------|----------------|--------|
+| {name} | {pages} | {count} | {pass/fail} |
 
-### Unresolved Items:
-{any findings the user chose to skip}
+### Audit Results:
+| Severity | Count |
+|----------|-------|
+| Critical | {N} |
+| High | {N} |
+| Medium | {N} |
+| Low | {N} |
 
 ### Verification:
 - Tests: {pass/fail}
 - Typecheck: {pass/fail}
 ```
 
-**Error breakout conditions** — STOP and shut down if:
+---
 
+## Resuming After Context Compact
+
+At 1M context, compaction is rare but possible for very large plans.
+
+1. `TaskList` → find `in_progress` task
+2. `TaskGet` → read metadata (which group, what role)
+3. Read plan.md Phase Table → reconstruct group progress from phase statuses
+4. Check if team exists and has active teammates
+5. Resume from the in_progress point
+
+---
+
+## Error Breakout Conditions
+
+STOP and shut down if:
 - Validator FAIL repeats 3+ times on the same phase
 - Auditor finding fix fails 3+ times
 - Phase has Critical blocking issues from plan review
 - User requests cancellation
 
----
-
-## Resuming After Context Compact
-
-If you notice context was compacted:
-
-1. Run `TaskList` to see all tasks and their status
-2. Filter by `metadata.agent_type === "orchestrator"` to find your own tasks (ignore builder/validator/auditor tasks)
-3. Find the `in_progress` task — that's where you were
-4. Run `TaskGet {id}` on that task — metadata tells you: which phase (`phase`), which group (`group`), and what role (`role`: phase vs audit vs fix)
-5. Read plan.md to get the Phase Table and Group Summary
-6. Use task metadata to reconstruct group progress: count completed tasks per `metadata.group`
-7. Check existing audit reports in `$ARGUMENTS/reviews/implementation/` to rebuild deviation summaries
-8. Check if team exists: read `~/.claude/teams/{plan-name}-impl/config.json`
-   - If team exists, teammates may still be active — coordinate via messages
-   - If no team, re-create it
-
-9. Continue from the in_progress task
-
-**Pattern for every work cycle:**
-
-```
-TaskList → filter by metadata.agent_type === "orchestrator" → find in_progress or first pending → TaskGet → continue work → TaskUpdate (completed) → next task
-```
-
-Tasks are the orchestrator's source of truth for progress — not memory, not plan.md alone.
-
----
-
-## Reference Material
-
-For anti-pattern prevention, context compact recovery, and troubleshooting, see [references/team-operations.md](references/team-operations.md).
+For detailed anti-patterns, teammate lifecycles, and troubleshooting, see [references/team-operations.md](references/team-operations.md).

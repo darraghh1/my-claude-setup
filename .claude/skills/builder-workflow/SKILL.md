@@ -1,14 +1,14 @@
 ---
 name: builder-workflow
-description: "Phase-level implementation workflow for builder agents. Handles loading project rules, reading phase files, finding references, invoking domain skills, implementing all steps, and running verification (tests + typecheck). Invoke this skill as your first action — not user-invocable."
+description: "Group-level implementation workflow for builder agents. Handles loading project rules, reading phase files, finding references, invoking domain skills, implementing all steps, and running verification (tests + typecheck). One builder per group — you implement all phases sequentially, accumulating context. Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
-  version: 1.0.0
+  version: 2.0.0
 ---
 
-# Builder Phase Workflow
+# Builder Group Workflow
 
-You have been assigned a **full phase** to implement. Your spawn prompt contains the phase file path and plan folder. This skill teaches you how to handle the entire phase end-to-end.
+You have been assigned a **group of phases** to implement. Your spawn prompt contains all phase file paths, cross-phase context from the orchestrator, and the plan folder. This skill teaches you how to handle each phase end-to-end, sequentially within your group.
 
 ## Why This Workflow Exists
 
@@ -22,6 +22,10 @@ The user experienced builders that guessed at patterns, skipped tests, and produ
 | Find reference file | Guessing at patterns, code doesn't match codebase |
 | Invoke domain skill | Missing project-specific conventions |
 | TDD first (Step 0) | Untested code, bugs discovered in production |
+
+## Group Context
+
+Your spawn prompt includes **targeted context from the fat orchestrator** — architectural decisions, what earlier groups built, integration points, and key deliverables for each phase. Use this context to inform your implementation. You don't need to rediscover what the orchestrator already told you.
 
 ## Step 0: Load Project Rules
 
@@ -97,13 +101,9 @@ The reference file is your ground truth. Your code must structurally match it.
 
 ## Step 4: Create Internal Task List
 
-Create tasks via `TaskCreate` for each implementation step. **This is not optional** — tasks survive context compacts and are your only recovery mechanism if context is compacted mid-phase. Without them, you must restart the entire phase from scratch.
+Create tasks via `TaskCreate` for each implementation step. Tasks provide progress tracking and serve as a safety net if context is compacted.
 
-**Prefix all task subjects with `[Step]`** to distinguish from the orchestrator's phase-level tasks in the shared team task list. Mark each task `in_progress` before starting and `completed` when done.
-
-**Always set `owner`** to your agent name (from your spawn prompt) when creating tasks. This enables filtering in the shared namespace — without it, your tasks are indistinguishable from other agents' tasks after a compact.
-
-**Always include structured `metadata`** on every task:
+**Prefix all task subjects with `[Step]`** and set `owner` to your agent name.
 
 ```
 TaskCreate({
@@ -114,42 +114,16 @@ TaskCreate({
     created_by: "{your-agent-name}",
     agent_type: "builder",
     phase: "P{NN}",
-    group: "{group-name-from-frontmatter}",
-    skill: "{skill-from-frontmatter}",
-    role: "step",
-    attempt: 1,
-    parent_task_id: "{orchestrator-phase-task-id-from-spawn-prompt}"
+    group: "{group-name}",
+    skill: "{skill}",
+    role: "step"
   }
 })
 ```
 
-After creating, set yourself as owner:
+**Task descriptions must be self-contained** — file paths, function signatures, acceptance criteria.
 
-```
-TaskUpdate({ taskId: "{id}", owner: "{your-agent-name}" })
-```
-
-**Metadata fields:**
-
-| Field | Value | Purpose |
-|-------|-------|---------|
-| `created_by` | Your agent name | Identifies task creator |
-| `agent_type` | `"builder"` | Enables role-specific hook reminders |
-| `phase` | `"P{NN}"` | Links task to its phase |
-| `group` | From phase frontmatter | Links task to its audit group |
-| `skill` | From phase frontmatter | Domain skill used |
-| `role` | `"step"` | Distinguishes step tasks from phase/audit/fix tasks |
-| `attempt` | `1` (increment on retry) | Tracks retry cycles |
-| `parent_task_id` | From spawn prompt | Links builder steps back to orchestrator's phase task |
-
-**Task descriptions must be self-contained:**
-- File paths to create/modify
-- Function signatures, key parameters
-- Which services/actions to call
-- Acceptance criteria for that step
-
-Bad: `"Create the dropdown component"`
-Good: `"[Step] Create change-role-dropdown.tsx at app/home/[account]/roles/_components/. Props: { membershipId, accountSlug }. Fetch roles via listRolesAction, filter by hierarchy_level. Use @/components/ui Select, Badge."`
+**When marking tasks completed:** The `TaskCompleted` hook may block your first attempt (verification gate). If this happens, **immediately retry** — the second attempt goes through. Do NOT move on without closing the task.
 
 **Always start with Step 0: TDD.**
 
@@ -212,21 +186,17 @@ All extra tests must pass before reporting completion.
 
 ## Step 7: Commit Changes (Worktree)
 
-You are running in an isolated git worktree. Your changes live on a separate branch that the orchestrator will merge into the main tree. **Uncommitted changes cannot be merged** — they are lost when the worktree is cleaned up.
-
-Commit all changes before reporting:
+You are running in an isolated git worktree. Commit after **each phase** — the orchestrator merges and validates between phases.
 
 ```bash
 git add -A && git commit -m "feat(phase-{NN}): {phase-title}"
 ```
 
-`git add -A` is safe here because your worktree started clean from the main branch — it only picks up your own phase work.
+`git add -A` is safe here because your worktree started clean from the main branch.
 
-If you have nothing to commit (e.g., the phase only modified test expectations that already pass), note this in your completion report.
+## Step 8: Report Phase Completion
 
-## Step 8: Report Completion
-
-Send completion message to the orchestrator:
+Send completion message for each phase:
 
 ```
 SendMessage({
@@ -237,18 +207,17 @@ SendMessage({
 })
 ```
 
-Then go idle. The orchestrator will either assign the next phase or send a shutdown request.
+**Then wait** for the orchestrator to confirm the merge + validation passed before starting the next phase. If validation fails, the orchestrator will message you with specific fix instructions — you already have full context from implementing this group.
+
+After all phases in the group are done (or when the orchestrator sends a shutdown request), go idle.
 
 ## Resuming After Context Compact
 
-If your context was compacted mid-phase:
+At 1M context, compaction is rare. If it happens:
 
-1. `TaskList` → scan for tasks where you are the `owner` (your agent name)
-2. Find your `in_progress` task, or if none, your first `pending` task
-3. `TaskGet` on that task → read the description AND `metadata`
-4. Metadata tells you: which phase (`phase`), which group (`group`), which skill (`skill`), and which orchestrator task you report to (`parent_task_id`)
-5. Continue from that task — don't restart the phase
-6. The task list and metadata are your source of truth, not your memory
+1. `TaskList` → find your `in_progress` or first `pending` task (filter by owner)
+2. `TaskGet` → read description and metadata for context
+3. Continue from that task — don't restart
 
 ## Troubleshooting
 

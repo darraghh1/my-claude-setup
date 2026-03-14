@@ -61,6 +61,15 @@
             "timeout": 10000
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/stop_task_check.py",
+            "timeout": 10000
+          }
+        ]
       }
     ],
     "PreCompact": [

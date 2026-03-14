@@ -1,6 +1,6 @@
 ---
 name: audit-plan
-description: "Structural audit of implementation plans — dependencies, data flow, ordering, stale artifacts. Runs BEFORE per-phase reviews to catch design-level issues early. Bails on fundamentally broken plans."
+description: "Structural audit of implementation plans — dependencies, data flow, ordering, stale artifacts. Runs BEFORE per-phase reviews to catch design-level issues early. Use when asked to 'audit the plan' or after /create-plan for plans with 3+ phases. Do NOT use for per-phase template checks — use /review-plan instead."
 argument-hint: "[plan-folder]"
 context: fork
 agent: general-purpose

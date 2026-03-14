@@ -35,6 +35,9 @@ Thumbs.db
 # Root Claude config snapshot (hard-linked, contains secrets)
 .claude/root-claude/
 
+# Infrastructure docs (hard-linked, contains internal IPs and network topology)
+docs/remote-access-setup.md
+
 # Drafts
 reddit-post.md
 

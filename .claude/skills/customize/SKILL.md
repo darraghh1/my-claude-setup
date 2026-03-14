@@ -1,6 +1,6 @@
 ---
 name: customize
-description: "Onboarding wizard that collects project details and fills all CUSTOMIZE markers across CLAUDE.md and rule files automatically."
+description: "Onboarding wizard that collects project details and fills all CUSTOMIZE markers across CLAUDE.md and rule files automatically. Use when setting up this config for a new project, or when asked to 'customize', 'configure for my project', or 'fill in the templates'."
 argument-hint: "[optional: project-name]"
 context: fork
 agent: general-purpose

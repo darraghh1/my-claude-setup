@@ -32,17 +32,18 @@ This is a configuration repo — no app build or runtime commands. Hooks are Pyt
 /create-plan → /audit-plan → /review-plan → /implement
 ```
 
-- **Thin dispatchers** — orchestrators stay lean, all heavy lifting in ephemeral workers
-- **Ephemeral agents** — fresh 200K context per phase, no contamination
-- **Builder worktree isolation** — parallel builders on separate git branches
-- **Group-based auditing** — cross-phase regression detection with deviation chaining
-- **5-layer quality gates** — PostToolUse hook → builder verification → validator /code-review → validator verification → group audit
+- **Fat orchestrator (1M context)** — reads full plan + all phases, writes targeted builder briefings with cross-phase context
+- **One builder per group** — builder stays alive across all phases in its group, accumulating context
+- **Builder worktree isolation** — one worktree per group, commit after each phase, orchestrator merges
+- **Plan-level auditing** — single auditor reviews ALL phases after all groups complete
+- **Playwright smoke checks** — orchestrator checks frontend between groups for console errors / broken pages
+- **6-layer quality gates** — PostToolUse hook → builder verification → validator /code-review → validator verification → Playwright smoke check → plan audit
 
 ### Component Inventory
 
 | Component | Count | Location |
 |-----------|-------|----------|
-| Hooks | 12 events, 13 scripts | `.claude/hooks/` |
+| Hooks | 12 events, 14 scripts | `.claude/hooks/` |
 | Skills | 27 | `.claude/skills/` |
 | Agents | 9 | `.claude/agents/` |
 | Rules | 16 | `rules/` (symlinked to `~/.claude/rules/`) |

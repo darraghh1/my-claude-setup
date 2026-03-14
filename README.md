@@ -1,5 +1,7 @@
 # Claude Code Setup for Next.js / Supabase / TypeScript
 
+> **v5.0 — 1M Context Overhaul (2026-03-14):** Major architecture update for Opus 4.6's 1M context window. Key changes: fat orchestrator reads full plan + all phases and writes targeted builder briefings; one builder per group (persistent, accumulates context); plan-level auditing replaces per-group auditing; Playwright smoke checks between groups catch frontend wireup failures; phase sizing updated from "30 small" to "5-8 medium" phases; concurrency limits loosened; compact recovery demoted from critical infrastructure to safety net. See the [Development Workflow](#development-workflow) section for details.
+
 A production-ready Claude Code configuration for Next.js/Supabase/TypeScript projects. Includes hooks for automated quality gates, skills for guided workflows, agents for specialized tasks, MCP server integrations, and comprehensive coding rules.
 
 Extracted from a production SaaS codebase and generalized for reuse. All files use `<!-- CUSTOMIZE -->` markers where you need to fill in project-specific details.
@@ -57,7 +59,7 @@ Extracted from a production SaaS codebase and generalized for reuse. All files u
 
 | Category        | Count               | Purpose                                                                                    |
 | --------------- | ------------------- | ------------------------------------------------------------------------------------------ |
-| **Hooks**       | 11 Python scripts   | Automated quality gates, logging, security blocks, context injection                       |
+| **Hooks**       | 14 Python scripts   | Automated quality gates, logging, security blocks, context injection, task cleanup          |
 | **Skills**      | 27 slash commands   | Guided workflows for planning, building, reviewing, creating diagrams, and using MCP tools |
 | **Agents**      | 9 agent definitions | Specialized sub-agents for architecture, review, testing, building, auditing, planning     |
 | **MCP Servers** | 5 integrations      | Browser automation, documentation lookup, web search, structured reasoning, diagramming    |
@@ -75,39 +77,40 @@ This setup's primary value is a **structured development pipeline** — from fea
   <img alt="Development pipeline diagram showing the flow from /create-plan through /audit-plan, /review-plan, and /implement with group-based auditing" src="docs/pipeline.png" width="950">
 </picture>
 
-`/implement` now processes phases in **groups** — connected phases that build the same feature area. After each group's phases pass the build/validate cycle, an auditor automatically reviews the group for cross-phase regressions, deferred items, plan drift, and system integrity. Medium/Low issues are auto-fixed; High/Critical issues checkpoint with the user. This catches drift incrementally rather than discovering it after 20 phases.
+`/implement` uses a **fat orchestrator** pattern — the orchestrator reads the full plan and every phase file, then writes targeted builder briefings with cross-phase context (service signatures, schema details, architectural decisions). One builder handles all phases in a group sequentially, accumulating context. After each group completes, a Playwright smoke check verifies the frontend still loads without console errors. After ALL groups complete, a single plan-level auditor reviews the entire implementation for cross-phase regressions, deferred items, and plan drift.
 
-### Atomic Phases
+### Phase Sizing (1M Context)
 
-Traditional development plans have 3-5 large phases. This doesn't work with AI-assisted development because each phase must fit within a single context window (~200K tokens). Large phases cause Claude to lose earlier context mid-implementation, producing incomplete or inconsistent code.
+With Opus 4.6's 1M context window, the old "30 small phases" rule no longer applies. Each phase should be a **coherent unit of work** — a service + its actions + its tests — not a micro-slice.
 
-**The rule: 30 small phases > 5 large phases.**
+**The rule: 5-8 medium phases > 30 small phases.**
 
-| Wrong                                   | Right                          |
-| --------------------------------------- | ------------------------------ |
-| "Phase 01: Database + API + UI"         | Split into 3 separate phases   |
-| "Phase 02: Full Feature Implementation" | Break into atomic steps        |
-| "Phase 03: Testing and Polish"          | TDD is Step 0 in _every_ phase |
+| Wrong                                           | Right                                            |
+| ----------------------------------------------- | ------------------------------------------------ |
+| "Phase 01: Create schema file" (too granular)   | "Phase 01: Database schema + RLS + migration"    |
+| "Phase 02: Add one server action" (too small)   | "Phase 02: Service layer + all server actions"   |
+| "Phase 03: Testing and Polish" (testing at end)  | TDD is Step 0 in _every_ phase                  |
+| 30 micro-phases for a medium feature             | 5-8 phases that each deliver a coherent slice    |
 
-Each phase file includes a `skill:` field in its frontmatter specifying which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The orchestrator extracts this value and passes it directly to the builder in the spawn prompt, so skill invocation is explicit rather than discovered indirectly. The builder also reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
+Each phase file includes a `skill:` field in its frontmatter specifying which domain skill to invoke — `postgres-expert` for database work, `server-action-builder` for API mutations, `react-form-builder` for forms, and so on. The fat orchestrator extracts this value and includes it in the builder's targeted briefing alongside cross-phase context. The builder also reads a real reference file from the codebase before writing any code, so patterns are grounded in what actually exists rather than guessed from training data.
 
 ### Team Orchestration
 
-Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern — an orchestrator skill that coordinates ephemeral agent teammates via checkpoints and message routing:
+`/create-plan` uses a thin dispatcher pattern. `/implement` uses a **fat orchestrator** — it reads the full plan, understands every phase, and writes targeted builder briefings with cross-phase context.
 
-| Pipeline                          | Orchestrator                                                                                 | Ephemeral Agents                                                                                    | Communication                                                                                                                                                        |
-| --------------------------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Planning** (`/create-plan`)     | Clarifies requirements, relays checkpoints to user, runs structural audit, spawns validators | Planner (creates plan.md + phases), Auditor (runs `/audit-plan`), Validators (run `/review-plan`)   | Checkpoints: planner reports plan summary and phase completion for user approval. Audit gates reviews — structural issues block before per-phase review work begins. |
-| **Implementation** (`/implement`) | Processes groups sequentially, gate checks, routes verdicts, triages audit findings          | Builder (implements one phase), Validator (runs `/code-review`), Auditor (cross-phase group review) | Builder → Validator → (per group) Auditor → orchestrator triages findings                                                                                            |
+| Pipeline                          | Orchestrator                                                                                                       | Agents                                                                                              | Communication                                                                                                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Planning** (`/create-plan`)     | Clarifies requirements, relays checkpoints to user, runs structural audit, spawns validators                       | Planner (creates plan.md + phases), Auditor (runs `/audit-plan`), Validators (run `/review-plan`)   | Checkpoints: planner reports plan summary and phase completion for user approval. Audit gates reviews — structural issues block before per-phase review work begins. |
+| **Implementation** (`/implement`) | Reads full plan + all phases, writes targeted builder briefings, runs Playwright smoke checks, triages audit findings | Builder (one per group), Validator (one per phase), Auditor (one for entire plan)                   | Builder → Validator → (between groups) Playwright smoke check → (after all groups) plan-level Auditor                                                                |
 
 #### Implementation Team (`/implement`)
 
-| Role             | Lifetime              | Responsibility                                                                                                                                                                                                                                                                                 |
-| ---------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Orchestrator** | Entire plan           | Processes groups sequentially, gate checks phases, spawns/shuts down agents, routes build/validate verdicts, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user)                                                                                                    |
-| **Builder**      | One phase (ephemeral) | Full phase implementation in an **isolated git worktree** — receives domain skill from orchestrator, reads phase file, finds references, writes code with TDD, runs tests + typecheck, commits to worktree branch. Orchestrator merges branch before validation. Does NOT review its own code. |
-| **Validator**    | One phase (ephemeral) | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator.                                                                                                                 |
-| **Auditor**      | One group (ephemeral) | Cross-phase analysis after a group completes — checks regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator.                                                                                                                |
+| Role             | Lifetime                | Responsibility                                                                                                                                                                                                                                                                                                |
+| ---------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Orchestrator** | Entire plan             | Reads full plan + all phases, writes targeted builder briefings with cross-phase context, gate checks, spawns/shuts down agents, merges worktree branches, routes verdicts, runs Playwright smoke checks between groups, triages auditor findings (auto-fix Medium/Low, escalate High/Critical to user)          |
+| **Builder**      | One group (persistent)  | Implements all phases in a group sequentially in an **isolated git worktree**, accumulating context. Receives targeted briefing from orchestrator with cross-phase context. Commits after each phase. Does NOT review its own code.                                                                              |
+| **Validator**    | One phase (ephemeral)   | Independent code review via `/code-review` (reference-grounded, with auto-fix), then verification (typecheck + tests + conditional E2E/DB). Reports PASS/FAIL to orchestrator.                                                                                                                                  |
+| **Auditor**      | Entire plan (ephemeral) | Plan-level analysis after ALL groups complete — reviews all phases together for cross-phase regressions, deferred items, plan drift, acceptance criteria. Read-only. Reports severity-rated findings to orchestrator.                                                                                            |
 
 #### Planning Team (`/create-plan`)
 
@@ -118,33 +121,38 @@ Both `/create-plan` and `/implement` use the same **thin dispatcher** pattern �
 | **Auditor**      | One audit (ephemeral) | Runs `/audit-plan` — structural flow audit checking dependencies, ordering, data flow. Bails with "Unusable" if plan is fundamentally broken. Gates per-phase reviews. |
 | **Validator**    | One file (ephemeral)  | Runs `/review-plan` against plan.md or a single phase file. Reports template score + codebase compliance. Only spawned after audit passes.                             |
 
-**Why agents are ephemeral:** Each task gets a fresh agent with a clean 200K context window. After the work cycle completes, agents are shut down. This prevents context contamination between phases (bad patterns from phase 2 don't bleed into phase 3) and ensures skill instructions are never compacted away.
+**Why one builder per group:** With 1M context, a single builder can handle all phases in a group sequentially — the builder that implements the database schema already knows the table structure when it builds the service layer. This eliminates the overhead of spawning a fresh builder per phase and the context loss that came with it. Validators remain ephemeral (fresh eyes for each phase review).
 
-**Builder worktree isolation:** Each builder runs in an isolated git worktree (`isolation: "worktree"`) with its own branch. This prevents parallel builders from corrupting each other's files. The builder commits to its worktree branch, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge before respawning a fresh builder.
+**Builder worktree isolation:** Each builder runs in an isolated git worktree (`isolation: "worktree"`) with its own branch — one worktree per group. The builder commits after each phase, the orchestrator merges the branch into the main tree, and the validator runs on the merged result. If validation fails, `git revert` cleanly undoes the merge and the builder (still alive with full context) receives fix instructions.
+
+**Playwright smoke checks:** Between groups, the orchestrator navigates key app pages via Playwright MCP tools, checking for console errors, broken pages, and hydration failures. This catches frontend wireup problems that unit tests and typecheck can't detect — a recurring issue where pages stop loading after backend changes.
 
 **Context injection:** Teammates don't inherit the parent's full context — file-scoped rules, domain skills, and project patterns must reach agents another way. Five rules with `alwaysApply: true` (git-workflow, mcp-tools, security, date-formatting, domain-patterns) load natively for all teammates. The workflow skills (`builder-workflow`, `validator-workflow`, `auditor-workflow`) each start with a Step 0 that explicitly reads `coding-style.md` and `patterns.md`. `domain-patterns.md` provides compressed critical patterns from all 9 domain skills as passive context — following the [Vercel finding](docs/research/vercel-skills-findings.md) that passive context achieves 100% compliance vs 53-79% for on-demand skill invocation. The orchestrator also extracts the `skill:` field from the phase frontmatter and passes it explicitly in the builder's spawn prompt. See [docs/teams-research.md](docs/teams-research.md) for the full analysis.
 
-The `/implement` orchestrator uses a **batch processing model** with strict concurrency limits:
+The `/implement` orchestrator processes groups sequentially with these concurrency limits:
 
-| Constraint              | Limit                   | Why                                                           |
-| ----------------------- | ----------------------- | ------------------------------------------------------------- |
-| Builders per batch      | Max 2                   | Context pressure from parallel completions                    |
-| Validators per batch    | Max 2 (one per builder) | Each builder gets one validator                               |
-| **Total active agents** | **Max 4**               | Orchestrator context budget                                   |
-| Batch overlap           | **None**                | Wait for current batch to fully complete before spawning next |
+| Constraint              | Limit   | Why                                                                        |
+| ----------------------- | ------- | -------------------------------------------------------------------------- |
+| Builders per group      | 1       | One builder handles all phases in a group, accumulating context            |
+| Parallel groups         | Max 2   | Two independent groups can build simultaneously                            |
+| Validators per batch    | Max 2   | One per active builder completing a phase                                  |
+| **Total active agents** | **Max 6** | 1M context handles more, but agent results still consume tokens          |
+| Auditor                 | **Runs alone** | Needs undivided orchestrator attention for triage                   |
 
-The orchestrator scans all pending phases and checks each phase's `dependencies` frontmatter to determine which are unblocked. Up to 2 unblocked phases are spawned as parallel builders (a "batch"), each with its own clean context. As each builder completes, a validator is spawned for its phase. The entire batch must finish — all builders done, all validators done, all verdicts processed — before the orchestrator loops back to find newly unblocked phases. No new builders are spawned mid-batch.
+Groups are processed sequentially in the order listed in the plan's Group Summary. Within a group, the builder implements phases one at a time. After each phase, the orchestrator merges the worktree branch and spawns a validator. Between groups, a Playwright smoke check verifies the frontend. After all groups, a plan-level auditor reviews everything.
 
 ### Quality Gates
 
-Quality is enforced at four layers during each phase, in order:
+Quality is enforced at six layers, in order:
 
-| Layer                        | When                         | What Runs                                                                                                                                    | Catches                                                                                              |
-| ---------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **Global PostToolUse hook**  | Every Write/Edit on TS files | `post_tool_use.py` (7 regex checks)                                                                                                          | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse            |
-| **Builder verification**     | After implementation         | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Test failures, type errors, E2E regressions, DB test failures                                        |
-| **Validator `/code-review`** | After builder reports done   | Comprehensive checklist (Code Reuse, Efficiency, TypeScript, Security, RLS, React, Testing), codebase-grounded, auto-fix (independent agent) | Pattern deviations, reinvented utilities, TOCTOU anti-patterns, security issues, missing auth checks |
-| **Validator verification**   | After code review auto-fixes | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Issues introduced by auto-fixes, E2E regressions, DB test failures                                   |
+| Layer                          | When                          | What Runs                                                                                                                                    | Catches                                                                                              |
+| ------------------------------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **Global PostToolUse hook**    | Every Write/Edit on TS files  | `post_tool_use.py` (7 regex checks)                                                                                                          | `any` types, missing `server-only`, `console.log`, hardcoded secrets, admin client misuse            |
+| **Builder verification**       | After each phase              | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Test failures, type errors, E2E regressions, DB test failures                                        |
+| **Validator `/code-review`**   | After builder reports done    | Comprehensive checklist (Code Reuse, Efficiency, TypeScript, Security, RLS, React, Testing), codebase-grounded, auto-fix (independent agent) | Pattern deviations, reinvented utilities, TOCTOU anti-patterns, security issues, missing auth checks |
+| **Validator verification**     | After code review auto-fixes  | `pnpm test` + `pnpm run typecheck` + conditional `pnpm test:e2e` / `pnpm test:db`                                                            | Issues introduced by auto-fixes, E2E regressions, DB test failures                                   |
+| **Playwright smoke check**     | Between groups                | Navigate key pages via Playwright MCP, check console errors, verify rendering                                                                 | Frontend wireup failures, broken pages, hydration mismatches, missing imports                         |
+| **Plan-level audit**           | After all groups complete     | Single auditor reviews ALL phases for cross-phase regressions, deferred items, plan drift, acceptance criteria                                 | Cross-group integration gaps, convention violations, unresolved deferred items                        |
 
 The global `post_tool_use.py` hook runs on all agents via `settings.json` — lightweight regex checks that catch convention violations at write-time without subprocess calls. For projects with TypeScript LSP configured (`tsconfig.json` with paths and the Next.js plugin), the LSP provides real-time type diagnostics as a complementary layer alongside the builder's `tsc --noEmit` verification. To enable the TypeScript LSP:
 

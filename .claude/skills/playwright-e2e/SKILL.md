@@ -1,6 +1,6 @@
 ---
 name: playwright-e2e
-description: "Write, review, or debug end-to-end tests using Playwright for critical user flows."
+description: "Write, review, or debug end-to-end tests using Playwright for critical user flows. Use when asked to 'write E2E tests', 'add test coverage for user flows', or 'debug a flaky test'. Do NOT use for live browser interaction — use /playwright-mcp instead."
 argument-hint: "[test-name or user-flow]"
 metadata:
   version: 1.0.0

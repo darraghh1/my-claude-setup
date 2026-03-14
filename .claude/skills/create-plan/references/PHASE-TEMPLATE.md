@@ -11,17 +11,20 @@ updated: YYYY-MM-DD
 ---
 
 <!--
-PHASE SIZE CONSTRAINTS:
-- Target: 10-15KB file max
-- If getting large, split into multiple phases
-- Each phase = single implementation session
+PHASE SIZE CONSTRAINTS (1M context):
+- Target: 20-30KB file max (5x headroom vs 200K era)
+- A phase should be "one coherent unit of work" — a service + its actions + its tests
+- Prefer 5-8 medium phases over 30 small phases
+- Each phase = one builder session within a group
 
 GROUP FIELD:
 - Connected phases share a group name (e.g. "auth-system", "dashboard-ui")
-- Groups define audit boundaries — all phases in a group are reviewed together after completion
+- One builder handles all phases in a group sequentially (stays alive, accumulates context)
+- Groups define builder boundaries — one builder per group, one worktree per group
 - A phase belongs to exactly one group
 - Single-phase groups are valid for standalone work
 - Group ordering determines the implementation sequence: group A before group B if B depends on A
+- After ALL groups complete, a single plan-level auditor reviews the entire implementation
 -->
 
 # Phase [NN]: [Title]

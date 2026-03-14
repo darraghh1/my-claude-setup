@@ -1,5 +1,5 @@
 ---
-description: Review UI code for Vercel Web Interface Guidelines compliance
+description: "Review UI code for Vercel Web Interface Guidelines compliance. Use when reviewing React components for accessibility, layout, typography, or interaction patterns. Do NOT use for performance optimization — use /vercel-react-best-practices instead."
 argument-hint: <file-or-pattern>
 ---
 

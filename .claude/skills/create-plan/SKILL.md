@@ -1,6 +1,6 @@
 ---
 name: create-plan
-description: "Create phased implementation plans for new features or projects. Spawns an ephemeral planner agent for plan/phase creation, then validators for review. Interactive checkpoints let the user course-correct during planning."
+description: "Create phased implementation plans for new features or projects. Spawns a planner agent for plan/phase creation, then validators for review. Interactive checkpoints let the user course-correct during planning. Use when asked to 'plan a feature', 'create a plan', or starting a multi-phase project. Do NOT use for small tasks — use /dev instead."
 argument-hint: "[feature-name] [description]"
 allowed-tools: Read, Write, Edit, Glob, Grep, Task, Skill, TaskCreate, TaskUpdate, TaskList, TaskGet, AskUserQuestion, TeamCreate, TeamDelete, SendMessage
 metadata:
@@ -27,7 +27,7 @@ This skill is a **thin dispatcher**. It does NOT read codebase references, extra
 | **Planner**            | Plan creation: read templates, explore codebase, create plan.md + phase files, self-validate. Does NOT review its own plan.       |
 | **Validator**          | Independent review: runs `/review-plan` against one file (plan.md or single phase). Reports template score + codebase compliance. |
 
-**The planner is ephemeral.** It gets a fresh 200K context, creates the plan artifacts, and shuts down when done. This prevents context contamination and ensures skill instructions are never compacted away.
+**The planner is ephemeral** for quality separation — it creates artifacts, validators review them independently. With 1M context, this separation is about fresh-eyes quality, not context management.
 
 ---
 
@@ -67,7 +67,7 @@ Before the planner estimates complexity, spawn an Explore agent to read the actu
 Task({
   description: "Explore codebase for {feature}",
   subagent_type: "Explore",
-  model: "haiku",
+  model: "sonnet",
   prompt: `Explore the codebase to produce a grounding summary for planning a new feature: {feature description}
 
 Produce a concise summary covering:
@@ -205,6 +205,7 @@ Spawn **one validator per file** for thorough reviews. See [references/delegatio
 Task({
   description: "Review plan.md",
   subagent_type: "general-purpose",
+  model: "opus",
   team_name: "{feature-name}-planning",
   name: "reviewer-plan",
   mode: "bypassPermissions",
@@ -235,6 +236,7 @@ After the skill completes, report:
 Task({
   description: "Review phase {NN}",
   subagent_type: "general-purpose",
+  model: "opus",
   team_name: "{feature-name}-planning",
   name: "reviewer-phase-{NN}",
   mode: "bypassPermissions",
@@ -269,9 +271,9 @@ After the skill completes, report:
 
 ### Batching Rules
 
-Spawning more than 4 concurrent agents causes context window blowout — results flood back (~5KB each), earlier context gets compressed, and the orchestrator produces unreliable summaries.
+With 1M context, the orchestrator can handle more concurrent results. But still batch to keep results manageable.
 
-1. **Maximum 4 validators at a time** — no exceptions
+1. **Maximum 6 validators at a time**
 2. **`run_in_background: true`** on every Task tool call
 3. **`TaskOutput` with `block: true`** to wait for completion
 4. **Wait for ALL validators in a batch** to complete before spawning the next batch
@@ -363,8 +365,8 @@ When all reviews pass and audit clears (or is skipped for small plans):
 | Constraint              | Limit     | Why                                                                                   |
 | ----------------------- | --------- | ------------------------------------------------------------------------------------- |
 | Planners                | 1         | Only one plan is created at a time                                                    |
-| Validators per batch    | Max 4     | Context pressure from parallel results                                                |
-| **Total active agents** | **Max 5** | 1 planner + 4 validators (planner may still be active during reviews for fix routing) |
+| Validators per batch    | Max 6     | 1M context handles more parallel results comfortably                                  |
+| **Total active agents** | **Max 7** | 1 planner + 6 validators (planner may still be active during reviews for fix routing) |
 | Batch overlap           | **None**  | Wait for current batch to fully complete before spawning next                         |
 
 ---
@@ -416,7 +418,7 @@ The user experienced each of these failures. Understanding the harm helps you av
 | Skipping requirements clarification          | Wrong plan built on false premises, hours of wasted effort                                    |
 | Spawning planner without user checkpoint     | User discovers wrong assumptions after all phases are written                                 |
 | Writing code blocks without reading codebase | Phases contain wrong patterns, caught late during implementation                              |
-| Large multi-concern phases                   | Phases exceed context window, work gets lost mid-implementation                               |
+| Single-file micro-phases (too granular)      | Excessive overhead — 30 phases for a medium feature wastes review/audit cycles                |
 | Self-reviewing the plan                      | Blind spots missed; `/review-plan` catches template AND codebase deviations                   |
 | Vague delegation prompts                     | Validators misinterpret and skip skill invocation                                             |
 | Folder without date prefix                   | Folders become unsorted chronologically                                                       |

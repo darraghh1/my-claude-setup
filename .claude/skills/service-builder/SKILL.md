@@ -1,6 +1,6 @@
 ---
 name: service-builder
-description: "Build pure, interface-agnostic services with injected dependencies for Next.js/Supabase applications."
+description: "Build pure, interface-agnostic services with injected dependencies for Next.js/Supabase applications. Use when creating service layers, business logic classes, or CRUD operations. Do NOT use for server actions — use /server-action-builder instead."
 argument-hint: "[service-name]"
 metadata:
   version: 1.0.0

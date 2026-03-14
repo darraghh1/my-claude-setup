@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 
 SEEN_FILE = Path("/tmp/claude-hook-seen.json")
+MARKER_FILE = Path("/tmp/claude-tasks-active.marker")
 TTL_SECONDS = 300  # 5 minutes
 MAX_BLOCKS_PER_MINUTE = 3
 
@@ -44,7 +45,7 @@ ROLE_REMINDERS = {
     ),
     "auditor": (
         "Auditor verification: ensure audit report is written to "
-        "reviews/implementation/group-{name}-audit.md and findings "
+        "reviews/implementation/plan-audit.md and findings "
         "are severity-rated before reporting to team-lead."
     ),
     "planner": (
@@ -108,6 +109,12 @@ def main():
     agent_id = input_data.get("agent_id", "")
     now = time.time()
     seen = load_seen()
+
+    # Write marker file so stop_task_check.py knows tasks were used
+    try:
+        MARKER_FILE.write_text(str(now))
+    except OSError:
+        pass
 
     # Rate limit: if we've blocked 3+ times in the last minute,
     # allow everything to break potential loops

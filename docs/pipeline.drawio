@@ -1,288 +1,240 @@
-<mxGraphModel>
-  <root>
-    <mxCell id="0" />
-    <mxCell id="1" parent="0" />
-
-    <!-- Title -->
-    <mxCell id="title" value="Claude Code Development Pipeline" style="text;html=1;fontSize=22;fontStyle=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="200" y="5" width="560" height="30" as="geometry" />
-    </mxCell>
-    <mxCell id="subtitle" value="From idea to shipped code — with 5 quality layers" style="text;html=1;fontSize=12;fontColor=#666666;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="280" y="33" width="400" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- ============ PLANNING PANEL ============ -->
-    <mxCell id="plan-panel" value="PLANNING" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#4472C4;align=center;spacingTop=5;" vertex="1" parent="1">
-      <mxGeometry x="20" y="60" width="440" height="960" as="geometry" />
-    </mxCell>
-
-    <!-- /create-plan -->
-    <mxCell id="create-plan" value="/create-plan" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
-      <mxGeometry x="150" y="95" width="180" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- Clarify Requirements -->
-    <mxCell id="clarify" value="Clarify Requirements" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="160" y="168" width="160" height="36" as="geometry" />
-    </mxCell>
-
-    <!-- Explore Codebase -->
-    <mxCell id="explore" value="Explore Codebase" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="160" y="237" width="160" height="36" as="geometry" />
-    </mxCell>
-
-    <!-- Explore annotation -->
-    <mxCell id="explore-note" value="Haiku agent&lt;br&gt;Grounding summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="340" y="235" width="110" height="40" as="geometry" /></mxCell>
-
-    <!-- Planner container -->
-    <mxCell id="planner-box" value="Planner (ephemeral, fresh 200K context)" style="rounded=1;whiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;verticalAlign=top;fontStyle=1;fontSize=11;align=center;spacingTop=3;" vertex="1" parent="1">
-      <mxGeometry x="65" y="307" width="350" height="178" as="geometry" />
-    </mxCell>
-
-    <!-- Planner steps -->
-    <mxCell id="p-step1" value="Read templates + codebase refs" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="110" y="338" width="260" height="30" as="geometry" /></mxCell>
-    <mxCell id="p-step2" value="Create plan.md + phase files" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="110" y="380" width="260" height="30" as="geometry" /></mxCell>
-    <mxCell id="p-step3" value="Self-validate each phase" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="110" y="422" width="260" height="30" as="geometry" /></mxCell>
-
-    <!-- User Checkpoint diamond -->
-    <mxCell id="checkpoint" value="User
-Checkpoint" style="rhombus;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=11;align=center;" vertex="1" parent="1">
-      <mxGeometry x="175" y="525" width="130" height="80" as="geometry" />
-    </mxCell>
-
-    <!-- Checkpoint annotation -->
-    <mxCell id="checkpoint-note" value="2 approval gates:&lt;br&gt;plan summary +&lt;br&gt;phases complete" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="320" y="533" width="120" height="50" as="geometry" /></mxCell>
-
-    <!-- /audit-plan (NOW BEFORE /review-plan) -->
-    <mxCell id="audit-plan" value="/audit-plan" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="175" y="648" width="140" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- Audit annotation -->
-    <mxCell id="audit-note" value="3+ phases&lt;br&gt;Structural design audit&lt;br&gt;Deps, data flow, ordering" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="330" y="638" width="130" height="55" as="geometry" /></mxCell>
-
-    <!-- /review-plan (NOW AFTER /audit-plan) -->
-    <mxCell id="review-plan" value="/review-plan" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="170" y="733" width="150" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- Review annotation -->
-    <mxCell id="review-note" value="Batched validators (max 4)&lt;br&gt;One file per agent&lt;br&gt;Template + codebase compliance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=center;" vertex="1" parent="1"><mxGeometry x="330" y="718" width="125" height="60" as="geometry" /></mxCell>
-
-    <!-- Pass? diamond -->
-    <mxCell id="pass-diamond" value="Pass?" style="rhombus;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="200" y="815" width="90" height="60" as="geometry" />
-    </mxCell>
-
-    <!-- Plan Ready -->
-    <mxCell id="plan-ready" value="Plan Ready" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" vertex="1" parent="1">
-      <mxGeometry x="175" y="930" width="140" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- ============ PLANNING EDGES ============ -->
-
-    <!-- create-plan → clarify -->
-    <mxCell id="e1" style="endArrow=classic;strokeColor=#333333;" edge="1" source="create-plan" target="clarify" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- clarify → explore -->
-    <mxCell id="e2" style="endArrow=classic;strokeColor=#333333;" edge="1" source="clarify" target="explore" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- explore → planner-box -->
-    <mxCell id="e3" style="endArrow=classic;strokeColor=#333333;" edge="1" source="explore" target="planner-box" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- planner-box → checkpoint -->
-    <mxCell id="e4" style="endArrow=classic;strokeColor=#333333;" edge="1" source="planner-box" target="checkpoint" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- checkpoint → audit-plan (Approve) -->
-    <mxCell id="e5" value="Approve" style="endArrow=classic;strokeColor=#333333;fontSize=10;fontColor=#333333;" edge="1" source="checkpoint" target="audit-plan" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- audit-plan → review-plan -->
-    <mxCell id="e6" style="endArrow=classic;strokeColor=#333333;" edge="1" source="audit-plan" target="review-plan" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- review-plan → pass-diamond -->
-    <mxCell id="e7" style="endArrow=classic;strokeColor=#333333;" edge="1" source="review-plan" target="pass-diamond" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- pass-diamond → plan-ready (Yes) -->
-    <mxCell id="e8" value="Yes" style="endArrow=classic;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;fontSize=10;" edge="1" source="pass-diamond" target="plan-ready" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- pass-diamond → planner-box (Fix loop) -->
-    <mxCell id="e-fix" value="Fix" style="endArrow=classic;strokeColor=#d79b00;fontColor=#d79b00;dashed=1;curved=1;fontSize=10;fontStyle=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" source="pass-diamond" target="planner-box" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="38" y="845" /><mxPoint x="38" y="432" /></Array></mxGeometry></mxCell>
-
-    <!-- checkpoint → planner-box (Revise loop) -->
-    <mxCell id="e-revise" value="Revise" style="endArrow=classic;strokeColor=#d79b00;fontColor=#d79b00;dashed=1;curved=1;fontSize=10;fontStyle=1;exitX=0;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="checkpoint" target="planner-box" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="50" y="535" />
-          <mxPoint x="50" y="396" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- ============ IMPLEMENTATION PANEL ============ -->
-    <mxCell id="impl-panel" value="IMPLEMENTATION" style="rounded=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#666666;verticalAlign=top;fontStyle=1;fontSize=14;fontColor=#333333;align=center;spacingTop=5;" vertex="1" parent="1">
-      <mxGeometry x="490" y="60" width="460" height="1110" as="geometry" />
-    </mxCell>
-
-    <!-- /implement -->
-    <mxCell id="implement" value="/implement" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" vertex="1" parent="1">
-      <mxGeometry x="625" y="95" width="180" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- Gate checks annotation -->
-    <mxCell id="gate-note" value="&lt;b&gt;Gate Checks&lt;/b&gt;&lt;br&gt;Plan review ✓&lt;br&gt;Flow audit ✓&lt;br&gt;No placeholders ✓" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=left;spacingLeft=5;" vertex="1" parent="1"><mxGeometry x="815" y="80" width="130" height="65" as="geometry" /></mxCell>
-
-    <!-- For Each Group label -->
-    <mxCell id="group-label" value="For Each Group (sequential)" style="text;html=1;fontSize=12;fontStyle=1;fontColor=#333333;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="610" y="158" width="220" height="25" as="geometry" />
-    </mxCell>
-
-    <!-- Builder container -->
-    <mxCell id="builder-box" value="Builder (ephemeral, per phase — max 2 parallel)" style="rounded=1;whiteSpace=wrap;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;verticalAlign=top;fontStyle=1;fontSize=11;align=center;spacingTop=3;" vertex="1" parent="1">
-      <mxGeometry x="540" y="193" width="360" height="205" as="geometry" />
-    </mxCell>
-
-    <!-- Builder steps -->
-    <mxCell id="b-step1" value="Find reference + domain skill" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="585" y="224" width="270" height="30" as="geometry" /></mxCell>
-    <mxCell id="b-step2" value="TDD first, then implement" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="585" y="264" width="270" height="30" as="geometry" /></mxCell>
-    <mxCell id="b-step3" value="tests + typecheck + E2E/DB" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="585" y="304" width="270" height="30" as="geometry" /></mxCell>
-    <mxCell id="b-step4" value="Commit to worktree branch" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#9673a6;fontSize=11;align=center;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="585" y="347" width="270" height="30" as="geometry" /></mxCell>
-
-    <!-- Merge step (NEW) -->
-    <mxCell id="merge" value="Orchestrator merges worktree branch" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=11;align=center;" vertex="1" parent="1">
-      <mxGeometry x="600" y="428" width="240" height="36" as="geometry" />
-    </mxCell>
-
-    <!-- Validator container -->
-    <mxCell id="validator-box" value="Validator (ephemeral, per phase)" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;verticalAlign=top;fontStyle=1;fontSize=11;align=center;spacingTop=3;" vertex="1" parent="1">
-      <mxGeometry x="555" y="494" width="340" height="120" as="geometry" />
-    </mxCell>
-
-    <!-- Validator steps -->
-    <mxCell id="v-step1" value="/code-review + auto-fix" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="595" y="522" width="260" height="30" as="geometry" /></mxCell>
-    <mxCell id="v-step2" value="tests + typecheck + E2E/DB" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="595" y="564" width="260" height="30" as="geometry" /></mxCell>
-
-    <!-- Result diamond -->
-    <mxCell id="result" value="Result" style="rhombus;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="680" y="645" width="80" height="60" as="geometry" />
-    </mxCell>
-
-    <!-- FAIL annotation -->
-    <mxCell id="fail-note" value="&lt;i&gt;Revert merge,&lt;br&gt;fresh builder&lt;/i&gt;" style="text;html=1;fontSize=9;fontColor=#b85450;align=right;verticalAlign=middle;fillColor=none;strokeColor=none;" vertex="1" parent="1"><mxGeometry x="495" y="432" width="85" height="30" as="geometry" /></mxCell>
-
-    <!-- Phase Done -->
-    <mxCell id="phase-done" value="Phase Done" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
-      <mxGeometry x="660" y="750" width="120" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- "All group phases pass" label -->
-    <mxCell id="group-pass-label" value="All group phases pass" style="text;html=1;fontSize=10;fontColor=#d79b00;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="640" y="800" width="160" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- Auditor container -->
-    <mxCell id="auditor-box" value="Auditor (ephemeral, runs alone)" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;verticalAlign=top;fontStyle=1;fontSize=11;align=center;spacingTop=3;" vertex="1" parent="1">
-      <mxGeometry x="555" y="830" width="340" height="120" as="geometry" />
-    </mxCell>
-
-    <!-- Auditor steps -->
-    <mxCell id="a-step1" value="Cross-phase regressions" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="595" y="858" width="260" height="30" as="geometry" /></mxCell>
-    <mxCell id="a-step2" value="Deferred items + plan drift" style="rounded=1;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=11;align=center;" vertex="1" parent="1"><mxGeometry x="595" y="900" width="260" height="30" as="geometry" /></mxCell>
-
-    <!-- Triage diamond -->
-    <mxCell id="triage" value="Triage" style="rhombus;whiteSpace=wrap;fillColor=#FFFFFF;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
-      <mxGeometry x="680" y="985" width="80" height="60" as="geometry" />
-    </mxCell>
-
-    <!-- Triage annotation -->
-    <mxCell id="triage-note" value="Clean/Low → next group&lt;br&gt;Medium → auto-fix&lt;br&gt;High/Critical → ask user" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;dashed=1;dashPattern=3 3;fontSize=10;align=left;spacingLeft=5;" vertex="1" parent="1"><mxGeometry x="540" y="990" width="135" height="50" as="geometry" /></mxCell>
-
-    <!-- "All groups done" label -->
-    <mxCell id="all-groups-label" value="All groups done" style="text;html=1;fontSize=10;fontColor=#82b366;fontStyle=1;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="665" y="1068" width="120" height="20" as="geometry" />
-    </mxCell>
-
-    <!-- All Done -->
-    <mxCell id="all-done" value="All Done" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" vertex="1" parent="1">
-      <mxGeometry x="665" y="1095" width="120" height="40" as="geometry" />
-    </mxCell>
-
-    <!-- ============ IMPLEMENTATION EDGES ============ -->
-
-    <!-- implement → builder-box -->
-    <mxCell id="e10" style="endArrow=classic;strokeColor=#333333;" edge="1" source="implement" target="builder-box" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- builder-box → merge -->
-    <mxCell id="e11" style="endArrow=classic;strokeColor=#333333;" edge="1" source="builder-box" target="merge" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- merge → validator-box -->
-    <mxCell id="e12" style="endArrow=classic;strokeColor=#333333;" edge="1" source="merge" target="validator-box" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- validator-box → result -->
-    <mxCell id="e13" style="endArrow=classic;strokeColor=#333333;" edge="1" source="validator-box" target="result" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- result → phase-done (PASS) -->
-    <mxCell id="e14" value="PASS" style="endArrow=classic;strokeColor=#82b366;fontColor=#82b366;fontStyle=1;fontSize=10;" edge="1" source="result" target="phase-done" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- result → FAIL back to builder (revert merge + fresh builder) -->
-    <mxCell id="e-fail" value="FAIL" style="endArrow=classic;strokeColor=#b85450;fontColor=#b85450;fontStyle=1;dashed=1;curved=1;fontSize=10;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=1;entryDx=0;entryDy=0;" edge="1" source="result" target="builder-box" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="508" y="675" /><mxPoint x="508" y="398" /></Array></mxGeometry></mxCell>
-
-    <!-- phase-done → auditor-box -->
-    <mxCell id="e15" style="endArrow=classic;strokeColor=#d79b00;fontSize=10;" edge="1" source="phase-done" target="auditor-box" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- auditor-box → triage -->
-    <mxCell id="e16" style="endArrow=classic;strokeColor=#333333;" edge="1" source="auditor-box" target="triage" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- triage → all-done -->
-    <mxCell id="e17" style="endArrow=classic;strokeColor=#82b366;" edge="1" source="triage" target="all-done" parent="1">
-      <mxGeometry relative="1" as="geometry" />
-    </mxCell>
-
-    <!-- triage → next group (loop back to builder area) -->
-    <mxCell id="e-next-group" value="Next group" style="endArrow=classic;strokeColor=#333333;dashed=1;fontSize=10;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;curved=1;" edge="1" source="triage" target="builder-box" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="915" y="1015" /><mxPoint x="915" y="193" /></Array></mxGeometry></mxCell>
-
-    <!-- ============ HANDOFF EDGE ============ -->
-    <mxCell id="e-handoff" value="handoff" style="endArrow=classic;strokeColor=#333333;dashed=1;dashPattern=8 8;strokeWidth=2;fontSize=10;fontColor=#666666;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" source="plan-ready" target="implement" parent="1">
-      <mxGeometry relative="1" as="geometry">
-        <Array as="points">
-          <mxPoint x="470" y="950" />
-          <mxPoint x="470" y="115" />
-        </Array>
-      </mxGeometry>
-    </mxCell>
-
-    <!-- ============ FOOTER ============ -->
-    <mxCell id="footer" value="5 Quality Layers: 1. PostToolUse hook (every write)  2. Builder verification  3. Validator /code-review  4. Validator verification  5. Group audit" style="text;html=1;fontSize=10;fontColor=#666666;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=none;strokeColor=none;" vertex="1" parent="1">
-      <mxGeometry x="100" y="1190" width="760" height="20" as="geometry" />
-    </mxCell>
-  </root>
-</mxGraphModel>
+<mxfile host="embed.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36" version="29.6.1">
+  <diagram id="cl_cfEYAXO8oPa9wNhJJ" name="Page-1">
+    <mxGraphModel dx="1426" dy="725" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;fontSize=20;fontStyle=1;align=left;verticalAlign=middle;fillColor=#dae8fc;gradientColor=#7ea6e0;strokeColor=#6c8ebf;" value="Development Pipeline v5.0" vertex="1">
+          <mxGeometry height="28" width="300" y="41" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" parent="1" style="text;fontSize=11;align=left;verticalAlign=middle;fontStyle=2;fillColor=#dae8fc;gradientColor=#7ea6e0;strokeColor=#6c8ebf;" value="1M Context · Fat Orchestrator · Plan-Level Auditing" vertex="1">
+          <mxGeometry height="18" width="350" y="74" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-orch" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=9;fontStyle=1;" value="Orchestrator" vertex="1">
+          <mxGeometry height="18" width="80" x="185" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-user" parent="1" style="rounded=1;fillColor=#fffbeb;strokeColor=#f59e0b;fontColor=#92400e;fontSize=9;fontStyle=1;" value="User" vertex="1">
+          <mxGeometry height="18" width="50" x="275" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-planner" parent="1" style="rounded=1;fillColor=#eff6ff;strokeColor=#3b82f6;fontColor=#1d4ed8;fontSize=9;fontStyle=1;" value="Planner" vertex="1">
+          <mxGeometry height="18" width="55" x="335" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-builder" parent="1" style="rounded=1;fillColor=#faf5ff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=9;fontStyle=1;" value="Builder" vertex="1">
+          <mxGeometry height="18" width="52" x="400" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-validator" parent="1" style="rounded=1;fillColor=#f0fdf4;strokeColor=#22c55e;fontColor=#166534;fontSize=9;fontStyle=1;" value="Validator" vertex="1">
+          <mxGeometry height="18" width="60" x="462" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-auditor" parent="1" style="rounded=1;fillColor=#ecfeff;strokeColor=#06b6d4;fontColor=#155e75;fontSize=9;fontStyle=1;" value="Auditor" vertex="1">
+          <mxGeometry height="18" width="55" x="532" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-explorer" parent="1" style="rounded=1;fillColor=#f1f5f9;strokeColor=#94a3b8;fontColor=#475569;fontSize=9;fontStyle=1;" value="Explorer" vertex="1">
+          <mxGeometry height="18" width="58" x="597" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="clarify" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Clarify Requirements" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="113" as="geometry" />
+        </mxCell>
+        <mxCell id="explore" parent="1" style="rounded=1;fillColor=#f1f5f9;strokeColor=#94a3b8;fontColor=#475569;fontSize=12;fontStyle=1;shadow=1;" value="Explore Codebase" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="183" as="geometry" />
+        </mxCell>
+        <mxCell id="note-explore" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontSize=9;dashed=1;whiteSpace=wrap;align=center;fontColor=#000000;" value="Haiku agent&#xa;Fast codebase discovery" vertex="1">
+          <mxGeometry height="38" width="160" x="600" y="183" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-explore" edge="1" parent="1" source="note-explore" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="explore" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="create-planmd" parent="1" style="rounded=1;fillColor=#eff6ff;strokeColor=#3b82f6;fontColor=#1d4ed8;fontSize=12;fontStyle=1;shadow=1;" value="Create plan.md" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="254" as="geometry" />
+        </mxCell>
+        <mxCell id="user-cp1" parent="1" style="rounded=1;fillColor=#fffbeb;strokeColor=#f59e0b;fontColor=#92400e;fontSize=12;fontStyle=1;shadow=1;" value="Approve Plan Summary" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="324" as="geometry" />
+        </mxCell>
+        <mxCell id="create-phases" parent="1" style="rounded=1;fillColor=#eff6ff;strokeColor=#3b82f6;fontColor=#1d4ed8;fontSize=12;fontStyle=1;shadow=1;" value="Create Phase Files (5-8 medium)" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="394" as="geometry" />
+        </mxCell>
+        <mxCell id="user-cp2" parent="1" style="rounded=1;fillColor=#fffbeb;strokeColor=#f59e0b;fontColor=#92400e;fontSize=12;fontStyle=1;shadow=1;" value="Approve Phases" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="464" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="clarify" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="explore" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="explore" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="create-planmd" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="create-planmd" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="user-cp1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="user-cp1" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="create-phases" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="create-phases" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="user-cp2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-revise1" edge="1" parent="1" source="user-cp1" style="endArrow=block;endFill=1;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;fontStyle=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle;" target="create-planmd" value="Revise">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="235" y="343" />
+              <mxPoint x="235" y="273" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-revise2" edge="1" parent="1" source="user-cp2" style="endArrow=block;endFill=1;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;fontStyle=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;edgeStyle=orthogonalEdgeStyle;" target="create-phases" value="Revise">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="225" y="483" />
+              <mxPoint x="225" y="413" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="flow-audit" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Flow Audit (3+ phases)" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="534" as="geometry" />
+        </mxCell>
+        <mxCell id="note-audit-gate" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;fontSize=9;dashed=1;whiteSpace=wrap;align=center;" value="Blocks if Unusable or&#xa;Major Restructuring" vertex="1">
+          <mxGeometry height="38" width="160" x="597" y="534" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-ag" edge="1" parent="1" source="note-audit-gate" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="flow-audit" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-cp2-audit" edge="1" parent="1" source="user-cp2" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="flow-audit" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="review-files" parent="1" style="rounded=1;fillColor=#f0fdf4;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="Review Files (max 6 parallel)" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="605" as="geometry" />
+        </mxCell>
+        <mxCell id="e-audit-review" edge="1" parent="1" source="flow-audit" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="review-files" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="read-plan" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Read Full Plan + All Phases" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="675" as="geometry" />
+        </mxCell>
+        <mxCell id="note-fat" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;fontSize=9;dashed=1;whiteSpace=wrap;align=center;" value="Fat orchestrator reads ALL phases&#xa;Writes targeted builder briefings&#xa;with cross-phase context" vertex="1">
+          <mxGeometry height="50" width="185" x="600" y="669" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-fat" edge="1" parent="1" source="note-fat" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="read-plan" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gate-check" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Gate Check Reviews" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="745" as="geometry" />
+        </mxCell>
+        <mxCell id="e-review-read" edge="1" parent="1" source="review-files" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="read-plan" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-read-gate" edge="1" parent="1" source="read-plan" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="gate-check" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="group-box" parent="1" style="rounded=1;fillColor=#faf5ff;gradientColor=#f3e8ff;gradientDirection=south;strokeColor=#a78bfa;strokeWidth=1.5;fontSize=11;fontStyle=1;fontColor=#7c3aed;verticalAlign=top;dashed=1;" value="For Each Group (sequential)" vertex="1">
+          <mxGeometry height="290" width="540" x="160" y="891" as="geometry" />
+        </mxCell>
+        <mxCell id="e-gate-group" edge="1" parent="1" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="spawn-builder" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="420" y="783" as="sourcePoint" />
+            <mxPoint x="420" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="spawn-builder" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Spawn Builder (worktree)" vertex="1">
+          <mxGeometry height="35" width="280" x="280" y="817" as="geometry" />
+        </mxCell>
+        <mxCell id="impl-phase" parent="1" style="rounded=1;fillColor=#faf5ff;strokeColor=#8b5cf6;fontColor=#7c3aed;fontSize=12;fontStyle=1;shadow=1;" value="Implement Phase → Commit" vertex="1">
+          <mxGeometry height="35" width="280" x="280" y="918" as="geometry" />
+        </mxCell>
+        <mxCell id="merge" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Merge Worktree Branch" vertex="1">
+          <mxGeometry height="35" width="280" x="280" y="988" as="geometry" />
+        </mxCell>
+        <mxCell id="validate" parent="1" style="rounded=1;fillColor=#f0fdf4;strokeColor=#22c55e;fontColor=#166534;fontSize=12;fontStyle=1;shadow=1;" value="Code Review + Verify" vertex="1">
+          <mxGeometry height="35" width="280" x="280" y="1058" as="geometry" />
+        </mxCell>
+        <mxCell id="pf-diamond" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=10;fontStyle=1;" value="Verdict" vertex="1">
+          <mxGeometry height="40" width="60" x="390" y="1126" as="geometry" />
+        </mxCell>
+        <mxCell id="e-spawn-impl" edge="1" parent="1" source="spawn-builder" style="endArrow=block;endFill=1;strokeColor=#8b5cf6;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" value="">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="420" y="883" as="sourcePoint" />
+            <mxPoint x="420" y="890" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-impl-merge" edge="1" parent="1" source="impl-phase" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="merge" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-merge-val" edge="1" parent="1" source="merge" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="validate" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-val-pf" edge="1" parent="1" source="validate" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="pf-diamond" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-fail" edge="1" parent="1" source="pf-diamond" style="endArrow=block;endFill=1;strokeColor=#ef4444;strokeWidth=1.5;fontColor=#dc2626;fontSize=10;fontStyle=1;exitX=1;exitY=0.5;entryX=1;entryY=0.5;edgeStyle=orthogonalEdgeStyle;" target="impl-phase" value="FAIL">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="660" y="1146" />
+              <mxPoint x="660" y="936" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-pass" edge="1" parent="1" source="pf-diamond" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#166534;fontSize=10;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="pw-check" value="PASS">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="note-builder" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;fontSize=9;dashed=1;whiteSpace=wrap;align=center;" value="One builder per group&#xa;Persistent — accumulates&#xa;context across all phases" vertex="1">
+          <mxGeometry height="48" width="175" x="740" y="910.5" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-b" edge="1" parent="1" source="note-builder" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=0.994;entryY=0.15;entryDx=0;entryDy=0;entryPerimeter=0;" target="group-box" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pw-check" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Playwright Smoke Check" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="1197" as="geometry" />
+        </mxCell>
+        <mxCell id="note-pw" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;fontSize=9;dashed=1;whiteSpace=wrap;align=center;" value="Console errors · Page load&#xa;Hydration · Frontend wireup" vertex="1">
+          <mxGeometry height="38" width="170" x="600" y="1197" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-pw" edge="1" parent="1" source="note-pw" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="pw-check" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mg-diamond" parent="1" style="rhombus;fillColor=#ffffff;strokeColor=#6b7280;fontColor=#374151;fontSize=10;fontStyle=1;" value="More?" vertex="1">
+          <mxGeometry height="40" width="60" x="390" y="1266" as="geometry" />
+        </mxCell>
+        <mxCell id="e-pw-mg" edge="1" parent="1" source="pw-check" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="mg-diamond" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-mg-loop" edge="1" parent="1" source="mg-diamond" style="endArrow=block;endFill=1;strokeColor=#d97706;strokeWidth=1.5;fontColor=#d97706;fontSize=10;fontStyle=1;exitX=0;exitY=0.5;edgeStyle=orthogonalEdgeStyle;entryX=-0.002;entryY=0.159;entryDx=0;entryDy=0;entryPerimeter=0;" target="group-box" value="Next group">
+          <mxGeometry relative="1" x="0.4328" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="120" y="1286" />
+              <mxPoint x="120" y="931" />
+              <mxPoint x="159" y="931" />
+            </Array>
+            <mxPoint x="160" y="861" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e-mg-audit" edge="1" parent="1" source="mg-diamond" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;fontColor=#166534;fontSize=10;fontStyle=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="plan-audit" value="All done">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="plan-audit" parent="1" style="rounded=1;fillColor=#ecfeff;strokeColor=#06b6d4;fontColor=#155e75;fontSize=12;fontStyle=1;shadow=1;" value="Plan-Level Audit" vertex="1">
+          <mxGeometry height="38" width="280" x="280" y="1338" as="geometry" />
+        </mxCell>
+        <mxCell id="note-audit" parent="1" style="rounded=1;fillColor=#e3c800;strokeColor=#B09500;fontColor=#000000;fontSize=9;dashed=1;whiteSpace=wrap;align=center;" value="Single auditor reviews ALL&#xa;phases — cross-phase regressions,&#xa;plan drift, deferred items" vertex="1">
+          <mxGeometry height="50" width="180" x="600" y="1332" as="geometry" />
+        </mxCell>
+        <mxCell id="e-note-audit" edge="1" parent="1" source="note-audit" style="endArrow=none;strokeColor=#eab308;strokeWidth=1;dashed=1;dashPattern=4 3;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" target="plan-audit" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="triage" parent="1" style="rounded=1;fillColor=#f8fafc;strokeColor=#64748b;fontColor=#334155;fontSize=12;fontStyle=1;shadow=1;" value="Triage Findings" vertex="1">
+          <mxGeometry height="38" width="220" x="310" y="1408" as="geometry" />
+        </mxCell>
+        <mxCell id="e-audit-triage" edge="1" parent="1" source="plan-audit" style="endArrow=block;endFill=1;strokeColor=#6b7280;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="triage" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="done" parent="1" style="rounded=1;arcSize=50;fillColor=#dcfce7;strokeColor=#16a34a;fontColor=#15803d;fontSize=13;fontStyle=1;shadow=1;" value="Done" vertex="1">
+          <mxGeometry height="32" width="100" x="370" y="1481" as="geometry" />
+        </mxCell>
+        <mxCell id="e-triage-done" edge="1" parent="1" source="triage" style="endArrow=block;endFill=1;strokeColor=#22c55e;strokeWidth=1.5;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="done" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="quality" parent="1" style="text;fontSize=9;fontColor=#94a3b8;align=center;fontStyle=2;" value="6-Layer Quality: PostToolUse Hook → Builder Verify → Validator /code-review → Validator Verify → Playwright Smoke → Plan Audit" vertex="1">
+          <mxGeometry height="18" width="800" x="50" y="1530" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl-cp" parent="1" style="rounded=1;fillColor=#FFFBEB;strokeColor=#EAB308;fontColor=#92400E;fontSize=11;fontStyle=1;shadow=0;" value="/create-plan" vertex="1">
+          <mxGeometry height="24" width="110" x="365" y="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

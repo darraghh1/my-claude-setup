@@ -1,6 +1,6 @@
 ---
 name: cache-audit
-description: "Audit your Claude Code setup for prompt caching efficiency. Measures prefix size, hook patterns, rule duplication, dynamic injection sizes, and tool stability. Returns a scored report with fixes ranked by token savings."
+description: "Audit your Claude Code setup for prompt caching efficiency. Measures prefix size, hook patterns, rule duplication, dynamic injection sizes, and tool stability. Use when asked to 'check caching', 'optimize prompt cache', or 'audit setup efficiency'. Returns a scored report with fixes ranked by token savings."
 ---
 
 # Prompt Cache Audit

@@ -1,6 +1,6 @@
 ---
 name: react-form-builder
-description: "Create client-side forms with react-hook-form, shadcn/ui, Zod validation, and server action integration for Next.js applications."
+description: "Create client-side forms with react-hook-form, shadcn/ui, Zod validation, and server action integration for Next.js applications. Use when building forms, input validation, or 'create/edit' UI flows. Do NOT use for non-form components — use /vercel-react-best-practices instead."
 argument-hint: "[form-name]"
 metadata:
   version: 1.0.0

@@ -1,6 +1,6 @@
 ---
 name: postgres-expert
-description: "Create, review, and optimise PostgreSQL schemas, migrations, RLS policies, functions, and PgTAP tests for Supabase applications."
+description: "Create, review, and optimise PostgreSQL schemas, migrations, RLS policies, functions, and PgTAP tests for Supabase applications. Use when working with database tables, migrations, RLS policies, or SQL functions. Do NOT use for application-layer code — use /service-builder or /server-action-builder instead."
 argument-hint: "[migration-name or table-name]"
 metadata:
   version: 1.0.0

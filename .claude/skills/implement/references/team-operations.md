@@ -1,167 +1,120 @@
 # Team Operations Reference
 
-Supplementary material for the `/implement` skill. This file covers teammate lifecycles, anti-pattern prevention, context compact recovery, file writing rules, and troubleshooting.
+Supplementary material for the `/implement` skill. Covers teammate lifecycles, anti-pattern prevention, compact recovery, and troubleshooting.
 
 ---
 
-## Builder Teammate Lifecycle
+## Builder Teammate Lifecycle (1M Context — One Builder Per Group)
 
-**Builders are ephemeral.** Each phase gets a fresh builder with a clean 200K context. After a phase completes, the builder is shut down and a new one is spawned for the next phase. This prevents context contamination between phases and ensures the `builder-workflow` skill instructions are never compacted away.
+**Builders persist across a group.** One builder handles all phases in a group sequentially, accumulating context. This means the builder that implements the database schema already knows the table structure when it builds the service layer. After the group completes, the builder is shut down.
 
 Each builder follows this flow:
 
-1. **Spawned by orchestrator** with a minimal prompt: phase file path + plan folder
-2. **builder-workflow skill invoked** — builder's first action is `Skill({ skill: "builder-workflow" })` as instructed by its agent config
-3. **Read phase** — extract requirements, steps, acceptance criteria
-4. **Pre-flight test check** — verify previous phases haven't left broken tests
-5. **Find reference + invoke domain skill** — ground truth for patterns
-6. **Create internal task list** — `TaskCreate` for each step, prefixed with `[Step]`. Required for context compact recovery
-7. **Implement with TDD** — Step 0 first, then remaining steps sequentially. Mark each `[Step]` task `in_progress`/`completed`
-8. **Final verification** — `pnpm test` + `pnpm run typecheck`
-9. **Report completion** to orchestrator via SendMessage (do NOT run `/code-review` — the validator handles that independently)
-10. **Shut down** when orchestrator sends shutdown_request
+1. **Spawned by orchestrator** with a targeted briefing: all phase file paths, cross-phase context, architectural decisions
+2. **builder-workflow skill invoked** — builder's first action is `Skill({ skill: "builder-workflow" })`
+3. **For each phase in the group:**
+   a. Read phase — extract requirements, steps, acceptance criteria
+   b. Pre-flight test check — verify previous phases haven't left broken tests
+   c. Find reference + invoke domain skill — ground truth for patterns
+   d. Create internal task list — `TaskCreate` for each step, prefixed with `[Step]`
+   e. Implement with TDD — Step 0 first, then remaining steps
+   f. Final verification — `pnpm test` + `pnpm run typecheck`
+   g. Commit changes — `git add -A && git commit -m "feat(phase-{NN}): {title}"`
+   h. Report phase completion to orchestrator via SendMessage
+   i. Wait for orchestrator to confirm merge + validation passed
+   j. Continue to next phase (builder retains all context from earlier phases)
+4. **Shutdown** when all phases in the group are done
 
-**Builders do NOT receive step-level tasks from the orchestrator.** The builder handles the entire phase end-to-end using the `builder-workflow` skill (invoked as its first action). The orchestrator's only job is to spawn the builder with the right phase file.
+**Builders do NOT run `/code-review`** — the validator handles that independently.
 
 ## Validator Teammate Lifecycle
 
-**Validators are ephemeral, like builders.** Each phase gets a fresh validator spawned on-demand when its builder reports completion. Each validator is named to match its builder (`validator-1` for `builder-1`, etc.). Max 2 validators active at a time (one per builder in a batch), respecting the 4-agent total cap.
+**Validators are ephemeral.** One fresh validator per phase, spawned after each builder phase completion + merge. The validator runs on the main tree (not worktree) to verify the integrated result.
 
-The validator follows this flow:
+1. **Spawned on-demand** by the orchestrator after merging a builder's phase commit
+2. **Run `/code-review`** — reference-grounded analysis with auto-fix for Critical/High/Medium
+3. **Run verification** (only if auto-fixes were applied) — `pnpm run typecheck` + `pnpm test`
+4. **Report verdict** — PASS or FAIL with specific file:line references and fixes needed
+5. **Shutdown** — orchestrator sends shutdown_request
 
-1. **Spawned on-demand** by the orchestrator in Step 7 when a builder reports completion
-2. **Run comprehensive code review:**
-   - Invoke `/code-review [phase-file-path]` — this forks a sub-agent that does reference-grounded analysis, severity-rated findings, and auto-fixes Critical/High/Medium issues
-   - The code review writes a review artifact to `{plan-folder}/reviews/code/phase-{NN}.md`
-3. **Run verification (only if auto-fixes were applied):**
-   - If code review auto-fixed any files → run `pnpm run typecheck` + `pnpm test` to confirm fixes are clean
-   - If code review found zero issues → **skip verification** (builder already passed tests + typecheck, no files changed)
-4. **Report verdict** via SendMessage to orchestrator:
-   - **PASS:** Code review passed, no unfixed issues, verification passed or skipped
-   - **FAIL:** Specific issues with file:line references, pattern violated, exact fix needed
-5. **Shut down** — orchestrator sends shutdown_request after processing the verdict
+## Auditor Lifecycle (Plan-Level)
 
-## Orchestrator Responsibilities
+**One auditor for the entire plan.** Spawned after ALL groups complete. Reviews all phases together for cross-phase regressions, deferred items, and plan drift. Write audit report to `$ARGUMENTS/reviews/implementation/plan-audit.md`.
 
-The orchestrator is a **thin dispatcher**. It does NOT read references, extract patterns, or implement code.
+## Orchestrator Responsibilities (Fat Orchestrator)
+
+The orchestrator is **informed and directive**. It reads the full plan, understands every phase, and writes targeted builder briefings with cross-phase context.
 
 | Orchestrator Does | Orchestrator Does NOT |
 |-------------------|----------------------|
-| Read plan.md and find pending phases | Read reference files or extract patterns |
-| Create/update tasks for phase tracking | Implement any code |
-| Gate-check phases (skeleton check, review check) | Assign step-level tasks to builders |
-| Spawn/shutdown builders per phase | Run `/code-review` directly |
+| Read full plan + all phase files | Implement any code |
+| Write targeted builder briefings with cross-phase context | Run `/code-review` directly |
+| Gate-check phases (skeleton check, review check) | Invoke domain skills (builders do this) |
+| Spawn/shutdown builders per group | Assign step-level tasks to builders |
 | Spawn validators per phase for independent review | Validate code directly |
-| Route PASS/FAIL verdicts | Invoke domain skills (builders do this) |
-| Update phase status in plan.md + task list | |
+| Merge worktree branches and handle conflicts | |
+| Run Playwright smoke checks between groups | |
+| Route PASS/FAIL verdicts | |
+| Update phase status in plan.md | |
+| Spawn plan-level auditor and triage findings | |
 
-## Patterns That Prevent User-Reported Failures
-
-The user experienced each of these failures. Understanding the harm helps you avoid them:
+## Anti-Patterns
 
 | Pattern to Avoid | Harm When Ignored |
 |------------------|-------------------|
-| Orchestrator reading references | Consumes orchestrator context with content builders need instead |
-| Orchestrator managing step-level tasks | Creates single point of failure; builders lose autonomy |
-| Reusing builders across phases | Context contamination; builder-workflow instructions get compacted |
-| Skipping the phase review gate | Phase has wrong patterns, builder implements wrong code |
+| Skipping the full plan read | Orchestrator writes vague builder prompts, builder discovers context slowly |
+| One builder per phase (old pattern) | Wastes context — the builder that built the schema should build the service |
+| Skipping Playwright smoke check | Frontend wireup failures reach the user; pages stop loading |
 | Skipping validator after builder | Pattern violations ship undetected |
-| Reusing a single validator across parallel builders | Validation serializes — last phase waits 15-20 min for its review |
-| Builder skipping reference file read | Builder guesses at patterns, code doesn't match codebase |
-| Builder skipping TDD (Step 0) | Untested code, bugs discovered later |
-| Builder running `/code-review` on its own code | Self-review blind spots — the author cannot objectively review their own work |
-| Forgetting to update phase status | Plan becomes stale, next session confused about progress |
-| Skipping TaskCreate for phase tracking | Orchestrator loses progress after context compact; no user-visible spinners |
-| More than 2 builders per batch | Context pressure on orchestrator from concurrent messages |
-| More than 4 total active agents (builders + validators) | Session crash, orchestrator overwhelmed |
-| Spawning new builders mid-batch ("filling open slots") | Ratchet effect — agent count only goes up, never stabilises |
-| Ignoring test failures from previous phases | Broken tests pile up, eventually blocking the entire plan |
+| Builder running `/code-review` on its own code | Self-review blind spots |
+| Per-group auditing (old pattern) | Auditor can't see cross-group regressions |
+| More than 6 total active agents | Session instability, orchestrator overwhelmed |
+| Ignoring test failures from previous phases | Broken tests pile up |
 | Skipping TeamDelete after completion | Stale team directories clutter filesystem |
-| Polling TaskOutput instead of waiting for messages | Wastes context; teammates send messages automatically |
-| Orchestrator spawning builder without phase file path | Builder has no target; builder-workflow skill can't activate properly |
 
-## Resuming After Context Compact
+## Quality Layers
 
-### For the Orchestrator
+1. **Global PostToolUse hook** — catches CLAUDE.md violations at write time (lightweight regex checks)
+2. **Builder self-verification** — `pnpm test` + `pnpm run typecheck` after each phase
+3. **Validator's `/code-review`** — comprehensive, reference-grounded review with auto-fix
+4. **Validator verification** (conditional) — only if code review auto-fixed files
+5. **Playwright smoke check** — frontend wireup verification between groups
+6. **Plan-level audit** — cross-phase regressions, deferred items, plan drift
 
-If context was compacted mid-implementation:
+## File Writing Rules
 
-1. **Run `TaskList`** — find your tasks and their status
-2. **Find the `in_progress` task** — that's the phase you were working on
-3. **Run `TaskGet {id}`** on that task to read full details
-4. **Read plan.md** — get the Phase Table for broader context
-5. **Check if a team exists:** read `~/.claude/teams/{plan-name}-impl/config.json`
-   - If team exists, teammates are still active — send messages to coordinate
-   - If no team, re-create it (Step 5) — validators are spawned on-demand in Step 7
-6. **Check builder status** — if a builder is active for the current phase, wait for its completion message
-7. **If no builder is active** — spawn a fresh builder for the current pending phase
-8. **Continue the dispatch loop** from that phase
+The Write tool **silently fails** if you haven't Read the file first.
 
-The task list is the orchestrator's primary source of truth for progress. Plan.md's Phase Table is secondary context.
-
-### For Builders
-
-If a builder's context is compacted mid-phase (rare, since builders are ephemeral with clean contexts):
-
-1. `TaskList` → find the `in_progress` or first `pending` task
-2. `TaskGet` on that task → read the self-contained description
-3. Continue from that task — don't restart the phase
-4. The task list is the builder's source of truth, not memory
-
-## File Writing Rules (Critical for Teammates)
-
-The Write tool **silently fails** if you haven't Read the file first. This has caused agents to generate entire documents that were never saved — wasting tokens and requiring relaunches.
-
-**Before overwriting any existing file:**
-1. **Read** the file first (even if you plan to replace all content)
-2. **Then Write** the new content
-
-**For modifying existing files, prefer Edit over Write** — Edit doesn't require a prior Read and makes targeted changes safely.
-
-**When spawning teammates via Task tool**, always include this instruction in the prompt:
-> "IMPORTANT: Before using the Write tool on any existing file, you MUST Read it first or the write will silently fail. Prefer Edit for modifying existing files."
+- **Before overwriting any existing file:** Read it first, then Write
+- **For modifying existing files:** prefer Edit over Write
+- **In all spawn prompts:** include "IMPORTANT: Before using Write on any existing file, you MUST Read it first."
 
 ## Troubleshooting
 
-### Builder Produces Non-Compliant Code
+### Builder Reports Multiple Phase Completions at Once
 
-**Cause:** Builder didn't follow the `builder-workflow` skill — skipped the reference file read or domain skill invocation.
+**Cause:** Builder implemented multiple phases without waiting for merge/validation between them.
 
-**Fix:** The builder-workflow skill handles this when invoked. If it's still happening, check that the builder agent config (`.claude/agents/team/builder.md`) instructs the builder to invoke the skill as its first action.
+**Fix:** Builder spawn prompt must instruct: "Report after EACH phase and wait for confirmation before continuing."
 
-### Context Compact Loses Orchestrator Progress
+### Playwright Smoke Check Fails
 
-**Cause:** Orchestrator didn't update the Phase Table in plan.md after a phase completed.
+**Cause:** Frontend wireup broken — missing imports, broken server components, or hydration errors.
 
-**Fix:** Always update the Phase Table status to "Done" before shutting down the builder. On recovery, read plan.md to find the first "Pending" phase.
-
-### Phase Review Blocks Implementation
-
-**Cause:** Phase has Critical/High codebase compliance issues from `/review-plan`.
-
-**Fix:** Fix the issues in the phase file first (gate check in Step 4). Fixing the plan costs 2 minutes; fixing the implementation costs 30. Re-run the review to verify fixes before spawning a builder.
+**Fix:** Check console errors from `browser_console_messages`. Spawn a fix builder targeting the specific broken pages. Common issues: missing `'use client'` directive, broken import paths after refactoring, stale `revalidatePath` calls.
 
 ### Validator FAIL Loops
 
 **Cause:** Builder produces code that repeatedly fails validation.
 
-**Fix:** After 3 FAIL cycles on the same phase, stop and report to the user. The phase likely has structural issues that need human judgment. Shut down the team cleanly.
+**Fix:** After 3 FAIL cycles, stop and report to user. The phase likely has structural issues needing human judgment.
 
-### Stale Team Directories After Implementation
+### Context Compact Recovery
 
-**Cause:** Orchestrator forgot to send `shutdown_request` to teammates and call `TeamDelete`.
+At 1M context, compaction is rare. If it happens:
 
-**Fix:** Always follow the cleanup sequence: send `shutdown_request` to each teammate, wait for approval, then call `TeamDelete`. Check `~/.claude/teams/` for stale directories.
-
-## Quality Layers
-
-Quality checks execute in this order during a phase:
-
-1. **Global PostToolUse hook** (`post_tool_use.py`) — catches common CLAUDE.md violations at write time (console.log, `any` types, missing server-only, secrets, admin client). Runs on all agents via settings.json — lightweight regex checks, non-blocking warnings.
-2. **Builder self-verification** — `pnpm test` + `pnpm run typecheck` after all steps complete (builder confirms its own work compiles and tests pass)
-3. **Validator's `/code-review`** — comprehensive, reference-grounded review with auto-fix (independent agent, fresh perspective, catches blind spots)
-4. **Validator verification** (conditional) — `pnpm run typecheck` + `pnpm test` only if code review auto-fixed files (skipped when no changes — builder's verification still holds)
-
-The key principle: **the builder never reviews its own code**. Layers 1-2 are self-verification (does it compile? do tests pass?). Layers 3-4 are independent review (does it follow patterns? is it correct?).
-
-Note: The agent-specific `typescript_validator.py` PostToolUse hook was removed from builder/validator/tdd-guide/security-reviewer agents. It was a project-customisation template with all checks commented out — running on every Write/Edit for zero benefit. The global `post_tool_use.py` hook covers the important checks. When deploying to a specific project, customise `typescript_validator.py` and re-enable if needed.
+1. `TaskList` → find `in_progress` task
+2. `TaskGet` → read metadata for group and role context
+3. Read plan.md Phase Table for broader progress
+4. Check if team exists and has active teammates
+5. Resume from the in_progress point

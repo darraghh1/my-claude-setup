@@ -1,14 +1,14 @@
 ---
 name: auditor-workflow
-description: "Group-level implementation audit workflow for auditor agents. Handles loading project rules, reading connected phases, reviewing code reviews, checking deferred items, cross-phase impact analysis, verification, and structured reporting to the orchestrator. Invoke this skill as your first action — not user-invocable."
+description: "Plan-level implementation audit workflow for auditor agents. Reviews ALL phases together for cross-phase regressions, deferred items, plan drift, coding convention compliance, and acceptance criteria. One auditor per plan, spawned after all groups complete. Invoke this skill as your first action — not user-invocable."
 user-invocable: false
 metadata:
-  version: 1.0.0
+  version: 2.0.0
 ---
 
-# Auditor Group Workflow
+# Auditor Plan Workflow
 
-You have been assigned a **group of connected phases** to audit. Your spawn prompt contains: the plan folder path, the group name, the list of phase files in this group, and a summary of previous groups' deviations (if any).
+You have been assigned the **entire plan** to audit. Your spawn prompt contains: the plan folder path and a list of all phase files. You review everything together — no group boundaries, no deviation chaining. You see the full picture.
 
 You are **read-only** — you observe, analyse, and report. You never modify source code, phase files, or review files. Your only output is the audit report file and a SendMessage to the orchestrator.
 
@@ -18,11 +18,11 @@ Per-phase code reviews check each brick. This audit checks whether the wall is s
 
 | Problem | Why Per-Phase Review Misses It |
 |---------|-------------------------------|
-| Missing coding conventions | Teammates don't inherit parent rules — auditor flags violations it can't see |
+| Missing coding conventions | Teammates don't inherit parent rules — auditor flags violations |
 | Cross-phase regressions | Each reviewer only sees their own phase |
 | Deferred items never actioned | No subsequent step checks if they were fixed |
 | Plan drift | Individual phases can pass review while collectively deviating from intent |
-| Previous group deviations compounding | Each group auditor only sees its own group without explicit cross-group context |
+| Cross-group integration gaps | Builder per group doesn't verify cross-group interactions |
 
 ## Step 0: Load Project Rules
 
@@ -39,9 +39,9 @@ If either file doesn't exist, skip it — the project may not have those rules c
 
 These rules inform what you flag during audit — import ordering, error handling, service patterns, data fetching conventions. Without them, you can't catch convention violations.
 
-## Step 1: Read Group Context
+## Step 1: Read Plan Context
 
-Read each phase file in your assigned group. Extract:
+Read **every phase file** in the plan. Extract:
 
 | Field | Source |
 |-------|--------|
@@ -179,19 +179,9 @@ Classify each criterion:
 
 Verify implementation respects each active ADR. Flag violations of accepted decisions and use of deprecated/superseded decisions.
 
-## Step 7: Consider Previous Group Deviations
+## Step 7: Write Audit Report
 
-Your spawn prompt includes a summary of deviations found in previous groups (if any). Check whether this group's implementation:
-
-1. **Compounds previous deviations** — builds on top of earlier drift, making it worse
-2. **Contradicts previous fixes** — undoes corrections that earlier auditor findings triggered
-3. **Introduces new drift in the same area** — same architectural pattern being violated again
-
-If previous deviations are relevant, flag them with explicit cross-group references.
-
-## Step 8: Write Audit Report
-
-Write the report to: `{plan-folder}/reviews/implementation/group-{name}-audit.md`
+Write the report to: `{plan-folder}/reviews/implementation/plan-audit.md`
 
 Create the `reviews/implementation/` directory if it doesn't exist.
 
@@ -200,9 +190,10 @@ Create the `reviews/implementation/` directory if it doesn't exist.
 ### Report Structure
 
 ```markdown
-# Group Audit: {group-name}
+# Plan Audit: {plan-title}
 
-**Phases:** {list of phase numbers and titles}
+**Phases:** {list of all phase numbers and titles}
+**Groups:** {list of group names}
 **Audited:** {date}
 **Code Reviews:** {count} ({pass} PASS, {fail} FAIL)
 **Verification:** Tests {pass/fail} | Typecheck {pass/fail}
@@ -283,13 +274,7 @@ Create the `reviews/implementation/` directory if it doesn't exist.
 
 ---
 
-## 6. Cross-Group Deviations
-
-{How this group relates to previous groups' findings — compounding, contradicting, or new drift}
-
----
-
-## 7. Findings by Severity
+## 6. Findings by Severity
 
 ### Critical
 {Issues that block shipping — security gaps, data loss risks, broken core functionality}
@@ -317,7 +302,7 @@ Create the `reviews/implementation/` directory if it doesn't exist.
 
 ---
 
-## 8. Summary
+## 7. Summary
 
 **Assessment:** {Clean | Minor Issues | Significant Gaps | Major Concerns}
 **Rationale:** {2-3 sentences}
@@ -325,7 +310,7 @@ Create the `reviews/implementation/` directory if it doesn't exist.
 **Recommendation:** {No action needed | Auto-fixable | Needs user input}
 ```
 
-## Step 9: Report to Orchestrator
+## Step 8: Report to Orchestrator
 
 Send a structured message to the orchestrator with the key findings:
 
@@ -333,8 +318,8 @@ Send a structured message to the orchestrator with the key findings:
 SendMessage({
   type: "message",
   recipient: "team-lead",
-  content: "Group '{group-name}' audit complete.\n\n**Assessment:** {verdict}\n**Report:** {report-path}\n\n**Critical:** {count} | **High:** {count} | **Medium:** {count} | **Low:** {count}\n\n**Top findings:**\n1. [most important finding with severity]\n2. [second finding]\n3. [third finding]\n\n**Unresolved deferred items:** {X} of {Y}\n**Acceptance criteria:** {met}/{total} met\n**Tests:** {pass/fail} | **Typecheck:** {pass/fail}\n\n**Recommendation:** {No action needed | Auto-fixable | Needs user input}",
-  summary: "Group {name} audit: {verdict}"
+  content: "Plan audit complete.\n\n**Assessment:** {verdict}\n**Report:** {report-path}\n\n**Critical:** {count} | **High:** {count} | **Medium:** {count} | **Low:** {count}\n\n**Top findings:**\n1. [most important finding with severity]\n2. [second finding]\n3. [third finding]\n\n**Unresolved deferred items:** {X} of {Y}\n**Acceptance criteria:** {met}/{total} met\n**Tests:** {pass/fail} | **Typecheck:** {pass/fail}\n\n**Recommendation:** {No action needed | Auto-fixable | Needs user input}",
+  summary: "Plan audit: {verdict}"
 })
 ```
 
@@ -373,9 +358,8 @@ TaskCreate({
 | 4 | `[Audit] Cross-phase impact analysis` | Shared files, overwrites, import chain integrity |
 | 5 | `[Audit] Run verification (tests + typecheck)` | Run pnpm test + typecheck, correlate failures |
 | 6 | `[Audit] Plan vs implementation comparison` | Acceptance criteria, scope, ADR compliance |
-| 7 | `[Audit] Consider previous group deviations` | Check for compounding, contradicting, or new drift |
-| 8 | `[Audit] Write audit report` | Write to reviews/implementation/group-{name}-audit.md |
-| 9 | `[Audit] Report to orchestrator` | SendMessage with structured findings |
+| 7 | `[Audit] Write audit report` | Write to reviews/implementation/plan-audit.md |
+| 8 | `[Audit] Report to orchestrator` | SendMessage with structured findings |
 
 Mark each task `in_progress` when starting and `completed` when done.
 
